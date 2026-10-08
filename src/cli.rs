@@ -1,0 +1,301 @@
+//! Command-line definitions (clap derive). Keep help text short: one line
+//! per flag and 1-2 examples per subcommand.
+
+use clap::{Parser, Subcommand, ValueEnum};
+
+pub const TOP_HELP: &str = "\
+Output is one JSON line: {\"ok\":true,\"data\":...,\"hint\":...} or
+{\"ok\":false,\"error\":{\"code\",\"message\"},\"hint\":...}. Use --format md for Markdown.
+State (docs, notes) lives in $AGENTBOX_HOME (default ~/.agentbox).
+
+Examples:
+  agentbox fetch https://example.com
+  agentbox read doc:1 --grep price";
+
+#[derive(Debug, Parser)]
+#[command(
+    name = "agentbox",
+    version,
+    about = "Busybox-style toolkit for small LLM agents",
+    after_help = TOP_HELP,
+    disable_help_subcommand = true
+)]
+pub struct Cli {
+    /// Output format
+    #[arg(long, global = true, value_enum, default_value_t = Format::Json)]
+    pub format: Format,
+
+    #[command(subcommand)]
+    pub cmd: Cmd,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Format {
+    Json,
+    Md,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Cmd {
+    /// Download a web page as Markdown; returns a doc handle and outline
+    #[command(
+        after_help = "Examples:\n  agentbox fetch https://example.com\n  agentbox fetch example.com/pricing --timeout 60"
+    )]
+    Fetch {
+        /// URL to fetch (https:// is added if missing)
+        url: String,
+        /// Timeout in seconds
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
+    },
+
+    /// Read a stored doc: a section, keyword snippets, or from an offset
+    #[command(
+        after_help = "Examples:\n  agentbox read doc:1 --section 2\n  agentbox read doc:1 --grep \"annual revenue\""
+    )]
+    Read {
+        /// Doc handle, e.g. doc:1
+        doc: String,
+        /// Section number from the outline
+        #[arg(long)]
+        section: Option<usize>,
+        /// Return snippets around this keyword (case-insensitive)
+        #[arg(long)]
+        grep: Option<String>,
+        /// Maximum characters to return
+        #[arg(long, default_value_t = 4000)]
+        max_chars: usize,
+        /// Start at this character offset (from next_offset)
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+    },
+
+    /// Evaluate arithmetic: + - * / % ^, sqrt, round(x,2), min, max, avg...
+    #[command(
+        after_help = "Examples:\n  agentbox calc \"(182.5 - 170) / 170 * 100\"\n  agentbox calc \"round(1299 * 0.85, 2)\""
+    )]
+    Calc {
+        /// Expression (quote it, or pass it as several words)
+        #[arg(required = true, num_args = 1.., allow_hyphen_values = true, trailing_var_arg = true)]
+        expr: Vec<String>,
+    },
+
+    /// Current date and time, optionally in another timezone
+    #[command(after_help = "Examples:\n  agentbox now\n  agentbox now --tz America/New_York")]
+    Now {
+        /// IANA zone (Asia/Taipei) or offset (+08:00)
+        #[arg(long)]
+        tz: Option<String>,
+    },
+
+    /// Read, write or edit local text files (changes need --apply)
+    #[command(subcommand)]
+    File(FileCmd),
+
+    /// Scratch notes with sources, kept across calls
+    #[command(subcommand)]
+    Note(NoteCmd),
+
+    /// [planned] Web search returning titles, URLs and snippets
+    #[command(after_help = "Example:\n  agentbox search \"EU AI Act obligations\" --limit 5")]
+    Search {
+        /// Search query
+        query: String,
+        /// Number of results
+        #[arg(long, default_value_t = 10)]
+        limit: u32,
+        /// Restrict to one domain, e.g. europa.eu
+        #[arg(long)]
+        site: Option<String>,
+        /// Only results from the last N days
+        #[arg(long)]
+        days: Option<u32>,
+    },
+
+    /// [planned] Pull links, tables, numbers or dates out of a doc
+    #[command(after_help = "Example:\n  agentbox extract doc:1 --what tables")]
+    Extract {
+        /// Doc handle, e.g. doc:1
+        doc: String,
+        /// What to extract
+        #[arg(long, default_value = "links", value_parser = ["links", "tables", "numbers", "dates", "emails"])]
+        what: String,
+        /// Keep only items containing this keyword
+        #[arg(long)]
+        grep: Option<String>,
+    },
+
+    /// [planned] Filter, sort and sum CSV / Markdown tables
+    #[command(
+        after_help = "Example:\n  agentbox table prices.csv --filter \"price<100\" --sort price --sum price"
+    )]
+    Table {
+        /// CSV file path or doc handle
+        source: String,
+        /// Row filter like `price<100` or `vendor=Dell`
+        #[arg(long)]
+        filter: Option<String>,
+        /// Sort by this column
+        #[arg(long)]
+        sort: Option<String>,
+        /// Sort descending
+        #[arg(long)]
+        desc: bool,
+        /// Add a total row for this column
+        #[arg(long)]
+        sum: Option<String>,
+        /// Comma-separated columns to keep
+        #[arg(long)]
+        cols: Option<String>,
+        /// Maximum rows
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+    },
+
+    /// [planned] Stock quote and price history for a ticker
+    #[command(after_help = "Example:\n  agentbox quote NVDA --range 1mo")]
+    Quote {
+        /// Ticker symbol, e.g. AAPL or 2330.TW
+        symbol: String,
+        /// History range
+        #[arg(long, default_value = "1d", value_parser = ["1d", "5d", "1mo", "6mo", "1y", "5y"])]
+        range: String,
+    },
+
+    /// [planned] Prediction-market odds (e.g. Polymarket) for a topic
+    #[command(after_help = "Example:\n  agentbox market \"fed rate cut\" --limit 5")]
+    Market {
+        /// Topic or keywords
+        query: String,
+        /// Number of markets
+        #[arg(long, default_value_t = 10)]
+        limit: u32,
+        /// Include closed markets
+        #[arg(long)]
+        closed: bool,
+    },
+
+    /// [planned] Build a Markdown report from notes (preview; --apply writes)
+    #[command(
+        after_help = "Example:\n  agentbox report \"Competitor pricing\" --tag pricing --out report.md --apply"
+    )]
+    Report {
+        /// Report title
+        title: String,
+        /// Only use notes with this tag
+        #[arg(long)]
+        tag: Option<String>,
+        /// Output file path
+        #[arg(long)]
+        out: Option<String>,
+        /// Actually write the file
+        #[arg(long)]
+        apply: bool,
+    },
+
+    /// Print OpenAI-style function-tool JSON schemas for all subcommands
+    #[command(after_help = "Examples:\n  agentbox schema\n  agentbox schema --implemented-only")]
+    Schema {
+        /// Leave out planned (not yet implemented) tools
+        #[arg(long)]
+        implemented_only: bool,
+    },
+
+    /// Run a tool by its schema name with JSON arguments (for agent frameworks)
+    #[command(
+        after_help = "Examples:\n  agentbox call fetch '{\"url\":\"https://example.com\"}'\n  agentbox call file_replace '{\"path\":\"a.txt\",\"find\":\"x\",\"replace\":\"y\"}'"
+    )]
+    Call {
+        /// Tool name from `agentbox schema`, e.g. read or note_add
+        name: String,
+        /// JSON object of arguments; `-` reads from stdin
+        #[arg(default_value = "{}")]
+        args: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum FileCmd {
+    /// Read a text file, optionally a line range
+    #[command(
+        after_help = "Examples:\n  agentbox file read notes.md\n  agentbox file read src/main.rs --lines 10:40"
+    )]
+    Read {
+        /// File path
+        path: String,
+        /// Line range START:END (1-based), e.g. 10:40
+        #[arg(long)]
+        lines: Option<String>,
+        /// Maximum characters to return
+        #[arg(long, default_value_t = 20000)]
+        max_chars: usize,
+    },
+    /// Write a whole file (shows a diff; --apply to write)
+    #[command(
+        after_help = "Examples:\n  agentbox file write out.md --content \"# Title\"\n  agentbox file write out.md --content \"# Title\" --apply"
+    )]
+    Write {
+        /// File path
+        path: String,
+        /// New full file content
+        #[arg(long, allow_hyphen_values = true)]
+        content: String,
+        /// Actually write the file
+        #[arg(long)]
+        apply: bool,
+    },
+    /// Replace exact text (shows a diff; --apply to write)
+    #[command(
+        after_help = "Examples:\n  agentbox file replace config.toml --find \"debug = true\" --replace \"debug = false\"\n  agentbox file replace a.md --find old --replace new --all --apply"
+    )]
+    Replace {
+        /// File path
+        path: String,
+        /// Exact text to find (must occur once unless --all)
+        #[arg(long, allow_hyphen_values = true)]
+        find: String,
+        /// Replacement text
+        #[arg(long, allow_hyphen_values = true)]
+        replace: String,
+        /// Replace every occurrence
+        #[arg(long)]
+        all: bool,
+        /// Actually write the file
+        #[arg(long)]
+        apply: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum NoteCmd {
+    /// Save a note, ideally with its source URL
+    #[command(
+        after_help = "Examples:\n  agentbox note add \"NVDA closed at 132.5\" --source https://stooq.com --tag stock"
+    )]
+    Add {
+        /// Note text (quote it, or pass several words)
+        #[arg(required = true, num_args = 1..)]
+        text: Vec<String>,
+        /// Source URL or doc handle
+        #[arg(long)]
+        source: Option<String>,
+        /// Tag for grouping, e.g. pricing
+        #[arg(long)]
+        tag: Option<String>,
+    },
+    /// List notes and the sources they cite
+    #[command(
+        after_help = "Examples:\n  agentbox note list\n  agentbox note list --tag pricing --grep enterprise"
+    )]
+    List {
+        /// Only notes with this tag
+        #[arg(long)]
+        tag: Option<String>,
+        /// Only notes containing this keyword
+        #[arg(long)]
+        grep: Option<String>,
+        /// Maximum notes (latest first kept)
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
+}

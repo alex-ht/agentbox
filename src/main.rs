@@ -1,0 +1,192 @@
+//! agentbox: a busybox-style toolkit for small language-model agents.
+
+mod cli;
+mod cmd;
+mod envelope;
+mod markdown;
+mod render;
+mod schema;
+mod state;
+
+use clap::Parser;
+use cli::{Cli, Cmd, FileCmd, Format, NoteCmd};
+use envelope::{envelope, AppError, CmdResult};
+use state::Store;
+use std::io::{Read, Write};
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    let argv: Vec<String> = std::env::args().collect();
+    // Detect --format early so even argument errors honor it.
+    let format = if argv.windows(2).any(|w| w[0] == "--format" && w[1] == "md")
+        || argv.iter().any(|a| a == "--format=md")
+    {
+        Format::Md
+    } else {
+        Format::Json
+    };
+    let cli = match Cli::try_parse_from(&argv) {
+        Ok(cli) => cli,
+        Err(e) => return clap_error(e, format),
+    };
+    let store = Store::new(state::default_home());
+    let res = dispatch(cli.cmd, &store);
+    emit(&res, cli.format)
+}
+
+/// Print help/version as plain text; turn real parse errors into an envelope.
+fn clap_error(e: clap::Error, format: Format) -> ExitCode {
+    use clap::error::ErrorKind;
+    match e.kind() {
+        ErrorKind::DisplayHelp
+        | ErrorKind::DisplayVersion
+        | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+            let _ = e.print();
+            ExitCode::SUCCESS
+        }
+        _ => {
+            let rendered = e.render().to_string();
+            let message = clap_message(&rendered);
+            let usage = rendered
+                .lines()
+                .find(|l| l.trim_start().starts_with("Usage:"))
+                .map(str::trim);
+            let hint = match usage {
+                Some(u) => format!("{u}. Run with --help for examples."),
+                None => "Run `agentbox --help` to list subcommands, or `agentbox <subcommand> --help` for examples.".into(),
+            };
+            let res: CmdResult = Err(AppError::new("bad_args", message, hint));
+            emit(&res, format);
+            ExitCode::from(2)
+        }
+    }
+}
+
+/// First line of a clap error, plus the indented detail lines when the
+/// first line ends with ':' (e.g. the list of missing arguments).
+fn clap_message(rendered: &str) -> String {
+    let mut lines = rendered.lines().map(str::trim).filter(|l| !l.is_empty());
+    let first = lines
+        .next()
+        .unwrap_or("invalid arguments")
+        .trim_start_matches("error: ")
+        .to_string();
+    if first.ends_with(':') {
+        let details: Vec<&str> = lines.take_while(|l| !l.starts_with("Usage:")).collect();
+        format!("{first} {}", details.join(", "))
+    } else {
+        first
+    }
+}
+
+fn emit(res: &CmdResult, format: Format) -> ExitCode {
+    let env = envelope(res);
+    let text = match format {
+        Format::Json => serde_json::to_string(&env).expect("envelope serializes"),
+        Format::Md => render::render_md(&env).trim_end().to_string(),
+    };
+    let mut stdout = std::io::stdout().lock();
+    let _ = writeln!(stdout, "{text}");
+    if res.is_ok() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn dispatch(cmd: Cmd, store: &Store) -> CmdResult {
+    match cmd {
+        Cmd::Fetch { url, timeout } => cmd::fetch::run(store, &url, timeout),
+        Cmd::Read {
+            doc,
+            section,
+            grep,
+            max_chars,
+            offset,
+        } => cmd::read::run(
+            store,
+            &cmd::read::ReadArgs {
+                doc,
+                section,
+                grep,
+                max_chars,
+                offset,
+            },
+        ),
+        Cmd::Calc { expr } => cmd::calc::run(&expr.join(" ")),
+        Cmd::Now { tz } => cmd::now::run(tz.as_deref()),
+        Cmd::File(FileCmd::Read {
+            path,
+            lines,
+            max_chars,
+        }) => cmd::file::read(&path, lines.as_deref(), max_chars),
+        Cmd::File(FileCmd::Write {
+            path,
+            content,
+            apply,
+        }) => cmd::file::write(&path, &content, apply),
+        Cmd::File(FileCmd::Replace {
+            path,
+            find,
+            replace,
+            all,
+            apply,
+        }) => cmd::file::replace(&path, &find, &replace, all, apply),
+        Cmd::Note(NoteCmd::Add { text, source, tag }) => {
+            cmd::note::add(store, &text.join(" "), source.as_deref(), tag.as_deref())
+        }
+        Cmd::Note(NoteCmd::List { tag, grep, limit }) => {
+            cmd::note::list(store, tag.as_deref(), grep.as_deref(), limit)
+        }
+        Cmd::Search { .. } => cmd::stubs::not_implemented("search"),
+        Cmd::Extract { .. } => cmd::stubs::not_implemented("extract"),
+        Cmd::Table { .. } => cmd::stubs::not_implemented("table"),
+        Cmd::Quote { .. } => cmd::stubs::not_implemented("quote"),
+        Cmd::Market { .. } => cmd::stubs::not_implemented("market"),
+        Cmd::Report { .. } => cmd::stubs::not_implemented("report"),
+        Cmd::Schema { implemented_only } => schema::run_schema(implemented_only),
+        Cmd::Call { name, args } => call(&name, &args, store),
+    }
+}
+
+/// `call <name> <json>`: map a function-tool call onto the regular CLI.
+fn call(name: &str, raw: &str, store: &Store) -> CmdResult {
+    let raw = if raw == "-" {
+        let mut s = String::new();
+        std::io::stdin().read_to_string(&mut s).map_err(|e| {
+            AppError::new(
+                "bad_args",
+                format!("reading stdin: {e}"),
+                "Pipe a JSON object into stdin.",
+            )
+        })?;
+        s
+    } else {
+        raw.to_string()
+    };
+    let args: serde_json::Value =
+        serde_json::from_str(if raw.trim().is_empty() { "{}" } else { &raw }).map_err(|e| {
+            AppError::new(
+                "bad_json",
+                format!("arguments are not valid JSON: {e}"),
+                r#"Pass a JSON object, e.g. {"url":"https://example.com"}."#,
+            )
+        })?;
+    let argv = schema::to_argv(name, &args)?;
+    let full = std::iter::once("agentbox".to_string()).chain(argv);
+    let cli = Cli::try_parse_from(full).map_err(|e| {
+        AppError::new(
+            "bad_args",
+            clap_message(&e.render().to_string()),
+            "Check the argument values against `agentbox schema`.",
+        )
+    })?;
+    if matches!(cli.cmd, Cmd::Call { .. } | Cmd::Schema { .. }) {
+        return Err(AppError::new(
+            "bad_args",
+            "call cannot run call or schema",
+            "Call a regular tool name.",
+        ));
+    }
+    dispatch(cli.cmd, store)
+}
