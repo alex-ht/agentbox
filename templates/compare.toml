@@ -1,0 +1,37 @@
+# Side-by-side comparison of options (products, vendors, tools).
+# Override the table columns with: --columns "Option,Price,Pros,Cons"
+name = "compare"
+description = "Comparison: H1 title, Summary, Comparison table with required columns, Recommendation, Sources."
+title_level = 1
+min_words = 150
+max_words = 1200
+citation_style = "inline-link"
+require_sources_section = true
+sources_heading = "Sources"
+sources_level = 2
+min_sources = 3
+forbid = ["As an AI", "as a language model"]
+
+[[section]]
+heading = "Summary"
+level = 2
+min_words = 30
+max_words = 150
+hint = "Which options were compared and the headline difference."
+keywords = ["summary", "overview"]
+
+[[section]]
+heading = "Comparison"
+level = 2
+table = true
+columns = ["Option", "Price", "Strengths", "Weaknesses"]
+require_citation = true
+hint = "One table row per option; cite where the figures come from below the table."
+keywords = ["comparison", "price", "pricing", "feature", "features"]
+
+[[section]]
+heading = "Recommendation"
+level = 2
+min_words = 30
+hint = "Which option fits which need, and why."
+keywords = ["recommendation", "verdict"]

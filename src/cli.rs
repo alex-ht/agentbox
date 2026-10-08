@@ -198,23 +198,9 @@ pub enum Cmd {
         closed: bool,
     },
 
-    /// [planned] Build a Markdown report from notes (preview; --apply writes)
-    #[command(
-        after_help = "Example:\n  agentbox report \"Competitor pricing\" --tag pricing --out report.md --apply"
-    )]
-    Report {
-        /// Report title
-        title: String,
-        /// Only use notes with this tag
-        #[arg(long)]
-        tag: Option<String>,
-        /// Output file path
-        #[arg(long)]
-        out: Option<String>,
-        /// Actually write the file
-        #[arg(long)]
-        apply: bool,
-    },
+    /// Build a report skeleton from a template, or check a report against one
+    #[command(subcommand)]
+    Report(ReportCmd),
 
     /// Settings such as the Tavily API key (stored in the state dir)
     #[command(subcommand)]
@@ -355,4 +341,67 @@ pub enum ConfigCmd {
     },
     /// Print the config file path
     Path,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ReportCmd {
+    /// Draft a Markdown skeleton with exact headings, TODOs, notes and sources
+    #[command(
+        after_help = "Examples:\n  agentbox report build \"Top 3 Rust web frameworks\" --template top-n --n 3 --out report.md --apply\n  agentbox report build \"CRM pricing\" --template compare --columns \"Tool,Price,Free tier\" --tag crm"
+    )]
+    Build {
+        /// Report title (becomes the H1)
+        title: String,
+        /// Built-in name, user template name, or path to a .toml file
+        #[arg(long, default_value = "brief")]
+        template: String,
+        /// Number of numbered items (templates with `{n}` sections)
+        #[arg(long)]
+        n: Option<usize>,
+        /// Comma-separated table columns (templates with a table)
+        #[arg(long)]
+        columns: Option<String>,
+        /// Only use notes with this tag
+        #[arg(long)]
+        tag: Option<String>,
+        /// Output file path; omit to return the draft inline
+        #[arg(long)]
+        out: Option<String>,
+        /// Actually write --out
+        #[arg(long)]
+        apply: bool,
+    },
+    /// Grade a report against a template; every issue has a concrete fix
+    #[command(
+        after_help = "Examples:\n  agentbox report check report.md --template top-n --n 3\n  agentbox --format md report check report.md --template brief"
+    )]
+    Check {
+        /// Markdown file to check
+        file: String,
+        /// Built-in name, user template name, or path to a .toml file
+        #[arg(long, default_value = "brief")]
+        template: String,
+        /// Required number of numbered items
+        #[arg(long)]
+        n: Option<usize>,
+        /// Required table columns, comma-separated
+        #[arg(long)]
+        columns: Option<String>,
+    },
+    /// List built-in and user report templates
+    #[command(after_help = "Example:\n  agentbox report templates")]
+    Templates,
+    /// Show a template's TOML
+    #[command(subcommand)]
+    Template(TemplateCmd),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum TemplateCmd {
+    /// Print a template's TOML so you can copy and edit it
+    #[command(after_help = "Example:\n  agentbox report template show top-n")]
+    Show {
+        /// Template name or path
+        name: String,
+    },
 }

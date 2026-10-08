@@ -1,0 +1,31 @@
+# Short research brief: title, summary, key findings, sources.
+name = "brief"
+description = "Short research brief: H1 title, Summary, Key Findings (cited), Sources."
+title_level = 1
+min_words = 120
+max_words = 900
+citation_style = "inline-link"   # inline-link | footnote | numbered
+require_sources_section = true
+sources_heading = "Sources"
+sources_level = 2
+min_sources = 2
+sources_from_notes = false        # true: every cited URL must come from notes or fetched docs
+forbid = ["As an AI", "as a language model", "I cannot browse", "I don't have access to real-time"]
+
+[[section]]
+heading = "Summary"
+level = 2
+required = true
+min_words = 30
+max_words = 150
+hint = "2-4 sentences that answer the question directly."
+keywords = ["summary", "overview"]
+
+[[section]]
+heading = "Key Findings"
+level = 2
+required = true
+min_words = 60
+require_citation = true
+hint = "Bullet list of concrete findings (numbers, dates, names); cite each one."
+keywords = ["finding", "findings", "fact", "facts"]

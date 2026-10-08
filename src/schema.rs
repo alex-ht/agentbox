@@ -274,16 +274,45 @@ pub const SPECS: &[Spec] = &[
         ],
     },
     Spec {
-        name: "report",
-        path: &["report"],
-        implemented: false,
-        desc: "Compile saved notes into a Markdown report with sources. Without apply=true it only previews.",
+        name: "report_build",
+        path: &["report", "build"],
+        implemented: true,
+        desc: "Draft a Markdown report skeleton from a template: exact headings and numbering, <!-- TODO(n) --> placeholders, your notes with citations, and a Sources section. Fill TODOs with file_replace, then run report_check.",
         params: &[
-            pos("title", "Report title"),
+            pos("title", "Report title (the H1)"),
+            dflt("template", Kind::Str, "brief", "Template: brief, compare, top-n, exec-lookup, a user template name, or a .toml path"),
+            opt("n", Kind::Int, "Number of numbered items for templates like top-n"),
+            opt("columns", Kind::Str, "Comma-separated table columns for templates like compare"),
             opt("tag", Kind::Str, "Only use notes with this tag"),
-            opt("out", Kind::Str, "Output file path"),
-            flag("apply", "Actually write the file"),
+            opt("out", Kind::Str, "Output file path; omit to get the draft inline"),
+            flag("apply", "Actually write the out file"),
         ],
+    },
+    Spec {
+        name: "report_check",
+        path: &["report", "check"],
+        implemented: true,
+        desc: "Check a Markdown report against a template (heading levels, numbering, required sections, citations, sources, length, leftover TODOs). Returns pass, score and issues; each issue has a concrete fix, often a ready file_replace command.",
+        params: &[
+            pos("file", "Markdown file to check"),
+            dflt("template", Kind::Str, "brief", "Template name or .toml path (same as used for report_build)"),
+            opt("n", Kind::Int, "Required number of numbered items"),
+            opt("columns", Kind::Str, "Required table columns, comma-separated"),
+        ],
+    },
+    Spec {
+        name: "report_templates",
+        path: &["report", "templates"],
+        implemented: true,
+        desc: "List available report templates (built-in and user) with descriptions.",
+        params: &[],
+    },
+    Spec {
+        name: "report_template_show",
+        path: &["report", "template", "show"],
+        implemented: true,
+        desc: "Show a report template's TOML (required sections, levels, word limits, citation style).",
+        params: &[pos("name", "Template name or path")],
     },
 ];
 
@@ -492,6 +521,16 @@ mod tests {
         }
     }
 
+    fn collect_leaves(name: &str, cmd: &clap::Command, out: &mut Vec<(String, clap::Command)>) {
+        if cmd.has_subcommands() {
+            for sub in cmd.get_subcommands() {
+                collect_leaves(&format!("{name}_{}", sub.get_name()), sub, out);
+            }
+        } else {
+            out.push((name.to_string(), cmd.clone()));
+        }
+    }
+
     /// Every leaf subcommand except schema/call has a spec whose params match
     /// the clap args exactly (names, positional-ness, defaults, choices).
     #[test]
@@ -505,13 +544,7 @@ mod tests {
             if name == "schema" || name == "call" || name == "config" {
                 continue;
             }
-            if sc.has_subcommands() {
-                for sub in sc.get_subcommands() {
-                    leaves.push((format!("{name}_{}", sub.get_name()), sub.clone()));
-                }
-            } else {
-                leaves.push((name, sc.clone()));
-            }
+            collect_leaves(&name, sc, &mut leaves);
         }
         assert_eq!(
             leaves.len(),

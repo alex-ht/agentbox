@@ -4,7 +4,7 @@
 
 小模型最常卡在「工具之間的膠水」：抓網頁後要自己寫 Python 清 HTML、要用 `grep | jq` 找數字、算個漲跌幅還得開 REPL。agentbox 把這些膠水做進工具裡，模型只要選對子命令、填對參數，就能完成像 PinchBench 那類任務：查股價、找活動、市場調查、Polymarket 簡報、查高階主管、深度研究、競品研究、找開源替代品、比價、IT 採購、歐盟法規、BYOK 最佳實務等。
 
-> 目前版本：v0.1。部分子命令先佔位，見下方狀態表。
+> 目前版本：v0.1。還有幾個子命令只是佔位，見下方狀態表。
 
 ## 設計原則
 
@@ -28,6 +28,7 @@
 | `now [--tz]` | 目前時間（ISO 8601）、星期、UTC 偏移，可指定時區 | ✅ 可用 |
 | `file read\|write\|replace` | 讀取文字檔（可指定行範圍）；寫入與精確取代會先給 diff，`--apply` 才寫入 | ✅ 可用 |
 | `note add\|list` | 暫存筆記與來源清單，跨呼叫保留，方便最後引用 | ✅ 可用 |
+| `report build\|check\|templates\|template show` | 依範本產生報告骨架（標題、編號、TODO、筆記與引用、Sources）；檢查報告結構並給出可直接執行的修正命令 | ✅ 可用 |
 | `search <query>` | 網路搜尋：有 Tavily 金鑰就用 Tavily，否則用免金鑰的 DuckDuckGo（被擋時改用 Bing）；`--save N` 可把前幾筆直接存成 doc | ✅ 可用 |
 | `config set\|get\|unset\|path` | 管理設定（例如 Tavily API 金鑰），金鑰一律遮罩顯示 | ✅ 可用 |
 | `schema` | 輸出所有子命令的 function tool schema | ✅ 可用 |
@@ -36,7 +37,6 @@
 | `table <source>` | CSV／表格的過濾、排序、加總 | 🚧 規劃中 |
 | `quote <symbol>` | 股價與歷史價格 | 🚧 規劃中 |
 | `market <query>` | 預測市場（如 Polymarket）賠率 | 🚧 規劃中 |
-| `report <title>` | 把筆記整理成附來源的 Markdown 報告 | 🚧 規劃中 |
 
 規劃中的子命令參數已經定好，呼叫時會回傳 `not_implemented`，並在 `hint` 裡給一個目前就能用的替代做法（例如改用 `fetch` 抓某個公開 API）。
 
@@ -96,6 +96,102 @@ agentbox config unset tavily.api_key
 設定檔在 Unix 上會以 0600 權限寫入。agentbox 的任何輸出、錯誤訊息和 hint 都不會印出金鑰本身；`config get` 只顯示前綴、長度和一組無法還原的短指紋。
 
 > ⚠️ **千萬不要把金鑰 commit 進版本庫。** 專案附了 `.env.example` 當範本；如果你用 direnv 或 dotenv 之類的工具，把它複製成 `.env` 再填值，`.env` 已列在 `.gitignore`。agentbox 本身不會讀 `.env`，只看環境變數和狀態目錄的設定檔。`config` 子命令也刻意不放進 `schema`，避免 agent 經手金鑰。
+
+## 報告：`report build` 與 `report check`
+
+很多評分器對報告格式非常挑剔：題目要求 `## 1.`，你寫成 `### 1.` 就算錯；少一個項目、少了 Sources 段落、某段沒附來源，也都會扣分。小模型最常在這種地方翻車，所以 agentbox 把「格式」交給範本處理：
+
+- `report build`：依範本產生骨架。標題層級和編號一字不差，需要模型填的地方都是 `<!-- TODO(k): ... -->`（k 不重複，方便用 `file replace` 精確取代），筆記會依 tag 放進對應段落並附上引用，最後列出 Sources。預設只預覽，加 `--apply` 才寫檔。
+- `report check`：唯讀，不改檔。回傳 `{pass, score, issues, stats}`，每個問題都有行號和**具體**的修正方式；標題層級、編號這類問題直接給一行可執行的 `agentbox file replace ... --apply`。
+- `report templates` 列出所有範本，`report template show <名稱>` 印出範本的 TOML。
+
+### 內建範本
+
+| 範本 | 結構 | 字數 | 最少來源 |
+|---|---|---|---|
+| `brief` | Summary、Key Findings（需引用） | 120–900 | 2 |
+| `compare` | Summary、Comparison（表格，欄位預設 Option / Price / Strengths / Weaknesses，可用 `--columns` 改）、Recommendation | 150–1200 | 3 |
+| `top-n` | `## 1. 標題` … `## N. 標題`，每項都要引用（`--n` 設定項目數，預設 3） | 100–1500 | 3 |
+| `exec-lookup` | Summary、Role and Background、Key Facts（後兩段需引用） | 80–800 | 2 |
+
+每個範本都要求一個 H1 標題、結尾的 `## Sources`，並禁止「As an AI」之類的句子。
+
+### 自訂範本
+
+範本是一個 TOML 檔。`--template` 可以給內建名稱、`$AGENTBOX_HOME/templates/<名稱>.toml` 裡的使用者範本名稱，或直接給檔案路徑。最快的做法是先用 `agentbox report template show brief` 印出內建範本，改好再存起來。一個精簡的例子：
+
+```toml
+name = "vendor-scan"
+description = "IT 採購：摘要、候選廠商（編號）、建議"
+min_words = 150
+citation_style = "inline-link"   # inline-link | footnote | numbered
+min_sources = 3
+sources_from_notes = true        # 引用的網址都必須來自 note 或 fetch 過的文件
+forbid = ["As an AI"]
+
+[[section]]
+heading = "Summary"
+max_words = 120
+
+[[section]]
+heading = "{n}. {title}"         # 編號段落：## 1. Foo、## 2. Bar ...
+repeat_min = 3
+repeat_max = 5
+require_citation = true
+keywords = ["vendor"]            # 帶有這些 tag 的筆記會放進這裡
+
+[[section]]
+heading = "Recommendation"
+must_contain = ["budget"]
+```
+
+段落可用的欄位：`heading`、`level`（預設 2）、`required`、`repeat_min` / `repeat_max`（編號段落）、`min_words` / `max_words`、`require_citation`、`must_contain`、`table` 與 `columns`、`aliases`、`hint`（會寫進 TODO 裡）、`keywords`。打錯欄位名稱會直接報錯，不會默默忽略。
+
+### 完整流程
+
+從搜尋到交出一份通過檢查的報告，每一步都只是一個命令：
+
+```bash
+# 1. 搜尋，順手把前兩筆存成 doc
+agentbox search "Rust web frameworks Axum Actix Rocket comparison" --max-results 3 --save 2
+agentbox read doc:2 --grep Rocket
+
+# 2. 記筆記；tag 用 item1、item2…（或段落關鍵字），build 時會放進對應段落
+agentbox note add "Axum is async-first, built on Tokio" --source https://dev.to/... --tag item1
+agentbox note add "Actix-web ~850K req/s baseline vs ~780K for Axum" --source https://reintech.io/... --tag item2
+agentbox note add "Rocket 0.5 focuses on developer experience" --source https://reintech.io/... --tag item3
+
+# 3. 產生骨架（先看預覽，再加 --apply 寫入）
+agentbox report build "Top 3 Rust Web Frameworks in 2026" --template top-n --n 3 --out report.md --apply
+
+# 4. 逐一填 TODO
+agentbox file replace report.md --find "<!-- TODO(1): item title -->" --replace "Axum" --apply
+
+# 5. 檢查
+agentbox report check report.md --template top-n --n 3 --format md
+```
+
+假設模型不小心把第一項寫成 `### 1. Axum`，檢查結果會是：
+
+```
+## FAIL: `report.md` (template `top-n`), score 88/100
+
+Stats: words 130 · sections 4 · citations 6 · sources 3 · todos_left 0
+
+1 error(s), 0 warning(s):
+
+- [ ] **error** `heading_level` (line 3): `### 1. Axum` must be a level-2 heading (`## `), found level 3
+  - fix: `agentbox file replace "report.md" --find "### 1. Axum" --replace "## 1. Axum" --apply`
+```
+
+照著 fix 執行，再檢查一次就會是 `PASS ... score 100/100`。JSON 版（預設輸出）的每個 issue 長這樣：
+
+```json
+{"severity":"error","rule":"heading_level","line":3,"message":"`### 1. Axum` must be a level-2 heading (`## `), found level 3",
+ "fix":"agentbox file replace \"report.md\" --find \"### 1. Axum\" --replace \"## 1. Axum\" --apply"}
+```
+
+會檢查的項目：留下的 TODO、多個 H1、標題格式（`##Foo` 少空格、setext 標題）、標題層級、編號（`1)`、`1:` 這類近似寫法、跳號、順序）、項目數量太多或太少、缺少的段落（名稱相近時直接給改名命令）、範本以外的段落（警告）、段落順序、每段字數與全文字數、段落沒有引用、引用格式不符（警告）、必須提到的關鍵字、缺表格或缺欄位、Sources 段落名稱與來源數量、引用了沒在 note / fetch 中出現過的網址（範本開啟 `sources_from_notes` 時）、禁用句。程式碼區塊裡的內容一律略過。分數是 100 減去每個錯誤 12 分、每個警告 4 分；只要沒有錯誤就算 `pass`。報告沒過關時命令本身仍然成功（`ok:true`、結束碼 0），要看的是 `data.pass`。
 
 ## 建置
 
@@ -177,7 +273,10 @@ $ agentbox file replace config.toml --find "debug = true" --replace "debug = fal
 ```bash
 agentbox schema --implemented-only > tools.json   # 每個元素就是一個 function tool
 agentbox call read '{"doc":"doc:4","section":2}'  # 模型呼叫工具時，原樣轉給 agentbox
+agentbox call report_check '{"file":"report.md","template":"top-n","n":3}'
 ```
+
+報告相關的工具刻意拆成 `report_build`、`report_check`、`report_templates`、`report_template_show` 四個，而不是一個帶 `action` 參數的大工具：每個工具只有自己需要的參數，小模型比較不會填錯，也不必記得哪些參數搭配哪個動作。
 
 在 Windows PowerShell 傳 JSON 參數時引號容易被吃掉，建議改用標準輸入：
 

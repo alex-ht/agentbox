@@ -7,13 +7,14 @@ mod dom;
 mod envelope;
 mod markdown;
 mod render;
+mod report;
 mod schema;
 mod state;
 #[cfg(test)]
 mod testutil;
 
 use clap::Parser;
-use cli::{Cli, Cmd, ConfigCmd, FileCmd, Format, NoteCmd};
+use cli::{Cli, Cmd, ConfigCmd, FileCmd, Format, NoteCmd, ReportCmd, TemplateCmd};
 use envelope::{envelope, AppError, CmdResult};
 use state::Store;
 use std::io::{Read, Write};
@@ -188,7 +189,40 @@ fn dispatch(cmd: Cmd, store: &Store) -> CmdResult {
         Cmd::Table { .. } => cmd::stubs::not_implemented("table"),
         Cmd::Quote { .. } => cmd::stubs::not_implemented("quote"),
         Cmd::Market { .. } => cmd::stubs::not_implemented("market"),
-        Cmd::Report { .. } => cmd::stubs::not_implemented("report"),
+        Cmd::Report(ReportCmd::Build {
+            title,
+            template,
+            n,
+            columns,
+            tag,
+            out,
+            apply,
+        }) => report::run_build(
+            store,
+            &report::BuildArgs {
+                title: &title,
+                template: &template,
+                overrides: report::template::Overrides { n, columns },
+                tag: tag.as_deref(),
+                out: out.as_deref(),
+                apply,
+            },
+        ),
+        Cmd::Report(ReportCmd::Check {
+            file,
+            template,
+            n,
+            columns,
+        }) => report::run_check(
+            store,
+            &file,
+            &template,
+            &report::template::Overrides { n, columns },
+        ),
+        Cmd::Report(ReportCmd::Templates) => report::template::list(store),
+        Cmd::Report(ReportCmd::Template(TemplateCmd::Show { name })) => {
+            report::template::show(store, &name)
+        }
         Cmd::Schema { implemented_only } => schema::run_schema(implemented_only),
         Cmd::Call { name, args } => call(&name, &args, store),
     }

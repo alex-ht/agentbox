@@ -10,7 +10,11 @@ pub fn render_md(env: &Value) -> String {
     let ok = env.get("ok").and_then(Value::as_bool).unwrap_or(false);
     if ok {
         if let Some(data) = env.get("data") {
-            render_value(data, 0, &mut out);
+            if is_check_report(data) {
+                render_checklist(data, &mut out);
+            } else {
+                render_value(data, 0, &mut out);
+            }
         }
     } else {
         let code = env
@@ -30,6 +34,66 @@ pub fn render_md(env: &Value) -> String {
         out.push_str(&format!("> hint: {hint}\n"));
     }
     out.trim_end().to_string() + "\n"
+}
+
+/// `report check` output: `{pass, score, issues:[...], stats:{...}}`.
+fn is_check_report(data: &Value) -> bool {
+    data.get("pass").is_some_and(Value::is_boolean)
+        && data.get("issues").is_some_and(Value::is_array)
+}
+
+/// Render a `report check` result as a human-readable checklist.
+fn render_checklist(data: &Value, out: &mut String) {
+    let pass = data["pass"].as_bool().unwrap_or(false);
+    let file = data.get("file").and_then(Value::as_str).unwrap_or("report");
+    let template = data.get("template").and_then(Value::as_str).unwrap_or("?");
+    let score = data.get("score").map(scalar).unwrap_or_default();
+    let verdict = if pass { "PASS" } else { "FAIL" };
+    out.push_str(&format!(
+        "## {verdict}: `{file}` (template `{template}`), score {score}/100\n\n"
+    ));
+    if let Some(Value::Object(stats)) = data.get("stats") {
+        let parts: Vec<String> = stats
+            .iter()
+            .map(|(k, v)| format!("{k} {}", scalar(v)))
+            .collect();
+        out.push_str(&format!("Stats: {}\n\n", parts.join(" · ")));
+    }
+    let issues = data["issues"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    if issues.is_empty() {
+        out.push_str("- [x] No issues found.\n");
+        return;
+    }
+    let count = |sev: &str| issues.iter().filter(|i| i["severity"] == sev).count();
+    out.push_str(&format!(
+        "{} error(s), {} warning(s):\n\n",
+        count("error"),
+        count("warn")
+    ));
+    for it in issues {
+        let sev = it
+            .get("severity")
+            .and_then(Value::as_str)
+            .unwrap_or("error");
+        let rule = it.get("rule").and_then(Value::as_str).unwrap_or("?");
+        let line = match it.get("line").and_then(Value::as_u64) {
+            Some(n) => format!(" (line {n})"),
+            None => String::new(),
+        };
+        let msg = it.get("message").and_then(Value::as_str).unwrap_or("");
+        out.push_str(&format!("- [ ] **{sev}** `{rule}`{line}: {msg}\n"));
+        if let Some(fix) = it
+            .get("fix")
+            .and_then(Value::as_str)
+            .filter(|f| !f.is_empty())
+        {
+            if fix.starts_with("agentbox ") {
+                out.push_str(&format!("  - fix: `{fix}`\n"));
+            } else {
+                out.push_str(&format!("  - fix: {fix}\n"));
+            }
+        }
+    }
 }
 
 fn scalar(v: &Value) -> String {
@@ -152,6 +216,25 @@ mod tests {
         let md = render_md(&env);
         assert!(md.contains("| section | heading |"));
         assert!(md.contains("| 2 | B\\|C |"));
+    }
+
+    #[test]
+    fn check_report_renders_as_checklist() {
+        let env = json!({"ok":true,"data":{"file":"r.md","template":"top-n","pass":false,"score":88,
+            "issues":[{"severity":"error","rule":"heading_level","line":3,"message":"bad level",
+                       "fix":"agentbox file replace \"r.md\" --find \"### 1. A\" --replace \"## 1. A\" --apply"}],
+            "stats":{"words":10,"sections":2}},"hint":null});
+        let md = render_md(&env);
+        assert!(
+            md.starts_with("## FAIL: `r.md` (template `top-n`), score 88/100"),
+            "{md}"
+        );
+        assert!(md.contains("Stats: words 10 · sections 2"));
+        assert!(md.contains("- [ ] **error** `heading_level` (line 3): bad level"));
+        assert!(md.contains("  - fix: `agentbox file replace"));
+        let env =
+            json!({"ok":true,"data":{"pass":true,"score":100,"issues":[],"stats":{}},"hint":null});
+        assert!(render_md(&env).contains("- [x] No issues found."));
     }
 
     #[test]

@@ -1,0 +1,22 @@
+# Numbered list report: "## 1. ...", "## 2. ...", ... (count set with --n, default 3).
+# Strict graders often require exactly this heading shape; "### 1." fails.
+name = "top-n"
+description = "Numbered items: H1 title, exactly N '## {n}. Title' sections each with a citation, Sources."
+title_level = 1
+min_words = 100
+max_words = 1500
+citation_style = "inline-link"
+require_sources_section = true
+sources_heading = "Sources"
+sources_level = 2
+min_sources = 3
+forbid = ["As an AI", "as a language model"]
+
+[[section]]
+heading = "{n}. {title}"
+level = 2
+repeat_min = 3
+repeat_max = 3
+min_words = 25
+require_citation = true
+hint = "Name the item in the heading; 2-4 sentences on why it belongs, with a source link."

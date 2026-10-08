@@ -1,0 +1,36 @@
+# Facts about a person and their role (executive lookup, leadership research).
+name = "exec-lookup"
+description = "Person/role lookup: H1 title, Summary, Role and Background (cited), Key Facts (cited), Sources."
+title_level = 1
+min_words = 80
+max_words = 800
+citation_style = "inline-link"
+require_sources_section = true
+sources_heading = "Sources"
+sources_level = 2
+min_sources = 2
+forbid = ["As an AI", "as a language model"]
+
+[[section]]
+heading = "Summary"
+level = 2
+min_words = 20
+max_words = 100
+hint = "Who the person is and their current role, in 1-3 sentences."
+keywords = ["summary", "overview"]
+
+[[section]]
+heading = "Role and Background"
+level = 2
+min_words = 30
+require_citation = true
+hint = "Current title, since when, previous roles, education; cite each fact."
+keywords = ["role", "background", "bio", "career", "education"]
+
+[[section]]
+heading = "Key Facts"
+level = 2
+min_words = 20
+require_citation = true
+hint = "Bullet list: tenure, notable decisions, compensation or holdings if public; cite each."
+keywords = ["fact", "facts", "news"]

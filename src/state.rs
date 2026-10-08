@@ -86,6 +86,16 @@ impl Store {
         ids
     }
 
+    /// Metadata of all stored docs, ascending by id.
+    pub fn doc_metas(&self) -> Vec<DocMeta> {
+        let dir = self.docs_dir();
+        self.doc_ids()
+            .into_iter()
+            .filter_map(|id| fs::read_to_string(dir.join(format!("{id}.json"))).ok())
+            .filter_map(|s| serde_json::from_str::<DocMeta>(&s).ok())
+            .collect()
+    }
+
     /// Store a document and return its new id.
     pub fn save_doc(&self, mut meta: DocMeta, body: &str) -> Result<u64, AppError> {
         let dir = self.docs_dir();

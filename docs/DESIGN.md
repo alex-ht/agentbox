@@ -19,7 +19,7 @@
 
 結束碼：成功 0、執行錯誤 1、參數解析錯誤 2。參數錯誤同樣用外層輸出到 stdout，不會只印 clap 的純文字錯誤；`--help` 與 `--version` 則照常輸出純文字。
 
-`--format md` 會把同一個外層轉成 Markdown：純量欄位變成項目清單、物件陣列變成表格、多行字串原樣輸出、`diff` 包在 ```` ```diff ```` 區塊內，最後一行是 `> hint: ...`。
+`--format md` 會把同一個外層轉成 Markdown：純量欄位變成項目清單、物件陣列變成表格、多行字串原樣輸出、`diff` 包在 ```` ```diff ```` 區塊內，最後一行是 `> hint: ...`。`report check` 的結果（`data` 同時有 `pass` 與 `issues`）例外，會畫成待辦清單：PASS/FAIL 標頭、分數、統計，每個問題一行 `- [ ] **error** `rule` (line N): ...`，下面接 fix。
 
 ## 2. 文件 handle
 
@@ -50,6 +50,7 @@
 ```
 $AGENTBOX_HOME（預設 ~/.agentbox 或 %USERPROFILE%\.agentbox）
 ├── config.toml   設定（Unix 上權限 0600），例如 [tavily] api_key、[search] backend
+├── templates/    使用者報告範本，<名稱>.toml
 ├── docs/
 │   ├── 1.md      轉換後的內容
 │   └── 1.json    中繼資料：url、title、content_type、fetched_at
@@ -60,7 +61,7 @@ $AGENTBOX_HOME（預設 ~/.agentbox 或 %USERPROFILE%\.agentbox）
 
 ## 4. 有副作用的命令
 
-會改動使用者檔案的命令（`file write`、`file replace`，以及之後的 `report --out`）預設只回傳 diff 預覽與 `applied:false`；同一個命令加上 `--apply` 才寫入。`file replace` 要求 `--find` 恰好出現一次，出現 0 次或多次都會回錯並在 `hint` 說明怎麼修正（多次時可加 `--all`）。
+會改動使用者檔案的命令（`file write`、`file replace`，以及 `report build --out`）預設只回傳 diff 預覽與 `applied:false`；同一個命令加上 `--apply` 才寫入。`file replace` 要求 `--find` 恰好出現一次，出現 0 次或多次都會回錯並在 `hint` 說明怎麼修正（多次時可加 `--all`）。
 
 ## 5. 金鑰與機密
 
@@ -72,3 +73,28 @@ $AGENTBOX_HOME（預設 ~/.agentbox 或 %USERPROFILE%\.agentbox）
 ## 6. 工具 schema
 
 `src/schema.rs` 有一張手寫的規格表，`agentbox schema` 由它產生 OpenAI function tool 格式；`agentbox call` 也用同一張表把 JSON 參數轉回命令列。單元測試會逐一比對規格表與 clap 定義（參數名稱、是否必填、預設值、可選值），兩邊不一致就會失敗，避免 schema 與實際行為脫節。巢狀子命令的工具名稱用底線連接，例如 `file_replace`、`note_add`。可重複的旗標（如 `search --site`）在 schema 裡是字串陣列，`call` 會展開成多個 `--site=...`。
+
+報告工具拆成 `report_build`、`report_check`、`report_templates`、`report_template_show` 四個獨立的 function tool，而不是一個 `report` 工具加 `action` 參數。理由是小模型最容易犯的錯是參數搭配錯誤（例如對 `check` 傳了 `title`、對 `build` 傳了 `file`）；拆開後每個工具的 schema 只列自己用得到的參數，必填欄位也很明確，描述可以直接寫「下一步做什麼」。代價只是工具清單多三個項目。schema 測試會遞迴走訪任意深度的巢狀子命令（`report template show` → `report_template_show`），確保規格表與 clap 定義同步。
+
+## 7. 報告範本與檢查
+
+### 範本格式
+
+範本是 TOML，內建的 `brief`、`compare`、`top-n`、`exec-lookup` 以 `include_str!` 編進執行檔（原始檔在 `templates/`）。載入順序：`--template` 看起來像路徑（含 `/`、`\` 或 `.toml`）就讀檔；否則先找 `$AGENTBOX_HOME/templates/<名稱>.toml`，再找內建範本。解析時 `deny_unknown_fields`，拼錯欄位會回 `bad_template` 而不是被忽略。
+
+頂層欄位：`name`、`description`、`title_level`（0 表示不要求標題）、`min_words` / `max_words`（全文，不含標題與 Sources）、`citation_style`（`inline-link` | `footnote` | `numbered`）、`require_sources_section`、`sources_heading`、`sources_level`、`min_sources`、`sources_from_notes`、`forbid`。段落 `[[section]]` 的 `heading` 若含 `{n}` 就是編號段落，`{title}` 代表項目名稱，數量由 `repeat_min` / `repeat_max` 決定，可用 `--n` 一次覆寫兩者；`table = true` 的段落可用 `--columns` 覆寫欄位。`--n` 或 `--columns` 用在不適用的範本上會回 `bad_args`，不會默默無效。
+
+### build 的慣例
+
+- TODO 一律是 `<!-- TODO(k): 說明 -->`，k 在整份文件中唯一，`file replace --find` 永遠只會命中一處。說明文字來自段落的 `hint`，並附上字數要求與引用格式範例。
+- 筆記分配：tag 是 `item2`、`item-2` 或 `2` 時放進第 2 個編號項目；否則 tag 符合段落 `keywords` 或標題中長度 ≥ 4 的字時放進該段。分不到的筆記放進 Sources 前的 `<!-- NOTES ... -->` 註解區塊，提醒模型搬移後刪除（`check` 會對殘留的區塊發警告）。
+- 引用依範本的 `citation_style` 產生，Sources 段落列出筆記來源（有 fetch 過的文件會用它的標題）；來源不足 `min_sources` 時加一個 TODO，並列出已 fetch 但還沒用到的文件當候選。
+- 輸出含 `outline`（行號、層級、標題）與 `todos` 數量，模型不用重讀整份檔案就知道結構。
+
+### check 的慣例
+
+- 用逐行解析的 Markdown 解析器（不依賴 pulldown-cmark），以便精準回報行號；fenced 與縮排程式碼區塊內的內容一律略過，HTML 註解不計字數。
+- 每個 issue 是 `{severity, rule, line, message, fix}`。`fix` 必須具體：能用單行取代修好的（標題層級、編號格式、Sources 名稱、多餘 H1、近似段落名稱）直接給 `agentbox file replace "檔名" --find "原文" --replace "新文" --apply`；其餘給出要加什麼、加在哪一行之後、還差多少字。
+- 編號段落先找完全符合格式的標題，再找近似寫法（`1)`、`1:`、`1-`、`1、`，或層級不對）；若數量還不夠，緊接在編號區後、且不是其他範本段落的標題（如 `## Rocket`）會被視為漏了編號的項目，直接給改名命令。
+- 分數 = 100 − 12 × 錯誤數 − 4 × 警告數（最低 0），`pass` 等於沒有錯誤。檢查沒過不算執行失敗：外層仍是 `ok:true`，結束碼 0。
+- `sources_from_notes = true` 時，報告裡出現的每個網址都必須能在 notes 或 docs 中找到（比對前先正規化網址），否則回報 `source_not_in_notes` 並建議先 `fetch` 再 `note add`。
