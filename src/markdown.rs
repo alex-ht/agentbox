@@ -15,10 +15,17 @@ pub const MAX_SECTION_CHARS: usize = 6000;
 /// `base_url` so the agent can fetch them directly.
 pub fn html_to_markdown(html: &str, base_url: Option<&str>) -> String {
     let base = base_url.and_then(|u| reqwest::Url::parse(u).ok());
+    let table_base = base.clone();
     let converter = htmd::HtmlToMarkdown::builder()
         .skip_tags(SKIP_TAGS.to_vec())
         .add_handler(vec!["a"], move |el: htmd::Element| {
             Some(anchor(&el, base.as_ref()))
+        })
+        .add_handler(vec!["table"], move |el: htmd::Element| {
+            Some(match pipe_table(el.node, table_base.as_ref()) {
+                Some(t) => format!("\n\n{t}\n\n"),
+                None => el.content.to_string(),
+            })
         })
         .build();
     let md = converter.convert(html).unwrap_or_default();
@@ -62,6 +69,132 @@ fn anchor(el: &htmd::Element, base: Option<&reqwest::Url>) -> String {
         ""
     };
     format!("{lead}[{text}]({link}){trail}")
+}
+
+/// Longest cell text accepted before a table is treated as page layout.
+const MAX_CELL_CHARS: usize = 300;
+
+/// Render an HTML `<table>` as a Markdown pipe table. Returns None for
+/// layout tables (one column, or cells holding whole paragraphs), which are
+/// better left as flowing text.
+fn pipe_table(node: &markup5ever_rcdom::Handle, base: Option<&reqwest::Url>) -> Option<String> {
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    collect_rows(node, base, &mut rows, true);
+    rows.retain(|r| r.iter().any(|c| !c.is_empty()));
+    let width = rows.iter().map(Vec::len).max().unwrap_or(0);
+    if width < 2 || rows.len() < 2 {
+        return None;
+    }
+    if rows
+        .iter()
+        .flatten()
+        .any(|c| c.chars().count() > MAX_CELL_CHARS)
+    {
+        return None;
+    }
+    let line = |r: &[String]| {
+        let mut cells: Vec<String> = r.iter().map(|c| c.replace('|', "\\|")).collect();
+        cells.resize(width, String::new());
+        format!("| {} |", cells.join(" | "))
+    };
+    let mut out = vec![line(&rows[0]), format!("|{}", " --- |".repeat(width))];
+    out.extend(rows[1..].iter().map(|r| line(r)));
+    Some(out.join("\n"))
+}
+
+fn collect_rows(
+    node: &markup5ever_rcdom::Handle,
+    base: Option<&reqwest::Url>,
+    rows: &mut Vec<Vec<String>>,
+    top: bool,
+) {
+    use markup5ever_rcdom::NodeData;
+    let tag = match &node.data {
+        NodeData::Element { name, .. } => name.local.to_string(),
+        _ => String::new(),
+    };
+    if tag == "table" && !top {
+        return; // nested tables are flattened into their cell's text
+    }
+    if tag == "tr" {
+        let mut cells = Vec::new();
+        for c in node.children.borrow().iter() {
+            if matches!(crate::dom::tag(c).as_deref(), Some("td" | "th")) {
+                let mut text = String::new();
+                cell_text(c, base, &mut text);
+                let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+                let span = crate::dom::attr(c, "colspan")
+                    .and_then(|s| s.trim().parse::<usize>().ok())
+                    .unwrap_or(1)
+                    .clamp(1, 20);
+                cells.push(text);
+                cells.extend(std::iter::repeat_n(String::new(), span - 1));
+            }
+        }
+        rows.push(cells);
+        return;
+    }
+    for c in node.children.borrow().iter() {
+        collect_rows(c, base, rows, false);
+    }
+}
+
+/// Inline text of a cell: links kept as `[text](url)`, everything else flat.
+fn cell_text(node: &markup5ever_rcdom::Handle, base: Option<&reqwest::Url>, out: &mut String) {
+    use markup5ever_rcdom::NodeData;
+    match &node.data {
+        NodeData::Text { contents } => out.push_str(&decode_entities(&contents.borrow())),
+        NodeData::Element { name, .. } => {
+            let tag = name.local.to_string();
+            if SKIP_TAGS.contains(&tag.as_str()) || tag == "img" {
+                return;
+            }
+            if tag == "br" {
+                out.push(' ');
+                return;
+            }
+            let block = matches!(
+                tag.as_str(),
+                "p" | "div" | "li" | "ul" | "ol" | "table" | "tr"
+            );
+            if block {
+                out.push(' ');
+            }
+            if tag == "a" {
+                let mut inner = String::new();
+                for c in node.children.borrow().iter() {
+                    cell_text(c, base, &mut inner);
+                }
+                let inner = inner.split_whitespace().collect::<Vec<_>>().join(" ");
+                let href = crate::dom::attr(node, "href").filter(|h| {
+                    let h = h.trim();
+                    !h.is_empty() && !h.starts_with('#') && !h.starts_with("javascript:")
+                });
+                match href {
+                    Some(h) if !inner.is_empty() => {
+                        let url = base
+                            .and_then(|b| b.join(h.trim()).ok())
+                            .map(|u| u.to_string())
+                            .unwrap_or_else(|| h.trim().to_string());
+                        let url = url
+                            .replace(' ', "%20")
+                            .replace('(', "%28")
+                            .replace(')', "%29");
+                        out.push_str(&format!(" [{inner}]({url}) "));
+                    }
+                    _ => out.push_str(&inner),
+                }
+            } else {
+                for c in node.children.borrow().iter() {
+                    cell_text(c, base, out);
+                }
+            }
+            if block {
+                out.push(' ');
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Remove `![alt](src)` image syntax; images are noise for a text-only agent.
@@ -304,6 +437,33 @@ mod tests {
         );
         assert!(md.contains("top and menu."), "{md}");
         assert!(!md.contains("Docs\""), "{md}");
+    }
+
+    #[test]
+    fn html_tables_become_pipe_tables() {
+        let html = r#"<h2>Plans</h2><table><thead><tr><th>Plan</th><th>Price</th></tr></thead>
+            <tbody><tr><td><a href="/pro">Pro</a></td><td><b>$19</b> per<br>user</td></tr>
+            <tr><td colspan="2">Billed | yearly</td></tr></tbody></table><p>After.</p>"#;
+        let md = html_to_markdown(html, Some("https://acme.test/pricing"));
+        assert!(md.contains("| Plan | Price |\n| --- | --- |\n"), "{md}");
+        assert!(
+            md.contains("| [Pro](https://acme.test/pro) | $19 per user |"),
+            "{md}"
+        );
+        assert!(md.contains("| Billed \\| yearly |  |"), "{md}");
+        assert!(md.contains("After."), "{md}");
+        // Layout tables (one column / paragraph-sized cells) stay as text.
+        let layout = format!(
+            "<table><tr><td>{}</td><td>x</td></tr><tr><td>a</td><td>b</td></tr></table>",
+            "word ".repeat(80)
+        );
+        let md = html_to_markdown(&layout, None);
+        assert!(!md.contains("| --- |"), "{md}");
+        let one = html_to_markdown(
+            "<table><tr><td>only</td></tr><tr><td>col</td></tr></table>",
+            None,
+        );
+        assert!(!one.contains('|'), "{one}");
     }
 
     #[test]

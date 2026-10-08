@@ -4,12 +4,12 @@
 
 小模型最常卡在「工具之間的膠水」：抓網頁後要自己寫 Python 清 HTML、要用 `grep | jq` 找數字、算個漲跌幅還得開 REPL。agentbox 把這些膠水做進工具裡，模型只要選對子命令、填對參數，就能完成像 PinchBench 那類任務：查股價、找活動、市場調查、Polymarket 簡報、查高階主管、深度研究、競品研究、找開源替代品、比價、IT 採購、歐盟法規、BYOK 最佳實務等。
 
-> 目前版本：v0.1。還有幾個子命令只是佔位，見下方狀態表。
+> 目前版本：v0.1。`quote` 與 `market` 還只是佔位，見下方狀態表。
 
 ## 設計原則
 
 - **子命令少而完整**：控制在 12–15 個，一律「動詞（-名詞）」命名，參數攤平。不需要管線、正規表示式或 jq；過濾、排序、加總都做成內建選項。
-- **輸出格式固定**：預設輸出一行精簡 JSON，加上 `--format md` 可改成 Markdown。所有子命令都用同一個外層結構：
+- **輸出格式固定**：預設輸出一行精簡 JSON，加上 `--format md` 可改成 Markdown；表格結果還能用 `--format csv`。所有子命令都用同一個外層結構：
   - 成功：`{"ok":true,"data":...,"hint":null}`
   - 失敗：`{"ok":false,"error":{"code":"...","message":"..."},"hint":"下一步建議"}`
   - 出錯時一定附上 `hint`，告訴模型下一步該怎麼做，而不是只丟一句錯誤訊息。
@@ -33,8 +33,8 @@
 | `config set\|get\|unset\|path` | 管理設定（例如 Tavily API 金鑰），金鑰一律遮罩顯示 | ✅ 可用 |
 | `schema` | 輸出所有子命令的 function tool schema | ✅ 可用 |
 | `call <name> <json>` | 用 schema 名稱 + JSON 參數執行工具（給框架用） | ✅ 可用 |
-| `extract <doc>` | 從文件抽出連結、表格、數字、日期 | 🚧 規劃中 |
-| `table <source>` | CSV／表格的過濾、排序、加總 | 🚧 規劃中 |
+| `extract <doc...> --kind K` | 從一或多份文件抽出表格、價格、日期、人名職稱、連結、數字、email，每筆附來源；`--save-table` 存成 `tbl:N` | ✅ 可用 |
+| `table show\|query\|import\|export` | `tbl:N` 或 CSV／TSV／JSON／Markdown 表格的檢視、過濾、排序、分組加總與匯出，不用寫程式 | ✅ 可用 |
 | `quote <symbol>` | 股價與歷史價格 | 🚧 規劃中 |
 | `market <query>` | 預測市場（如 Polymarket）賠率 | 🚧 規劃中 |
 
@@ -192,6 +192,95 @@ Stats: words 130 · sections 4 · citations 6 · sources 3 · todos_left 0
 ```
 
 會檢查的項目：留下的 TODO、多個 H1、標題格式（`##Foo` 少空格、setext 標題）、標題層級、編號（`1)`、`1:` 這類近似寫法、跳號、順序）、項目數量太多或太少、缺少的段落（名稱相近時直接給改名命令）、範本以外的段落（警告）、段落順序、每段字數與全文字數、段落沒有引用、引用格式不符（警告）、必須提到的關鍵字、缺表格或缺欄位、Sources 段落名稱與來源數量、引用了沒在 note / fetch 中出現過的網址（範本開啟 `sources_from_notes` 時）、禁用句。程式碼區塊裡的內容一律略過。分數是 100 減去每個錯誤 12 分、每個警告 4 分；只要沒有錯誤就算 `pass`。報告沒過關時命令本身仍然成功（`ok:true`、結束碼 0），要看的是 `data.pass`。
+
+## 抽取資料：`extract`
+
+`extract` 從 doc（或本機的 .md／.txt／.html 檔）抽出結構化項目，模型不用寫正規表示式或程式。完全是固定規則，工具裡沒有呼叫任何語言模型，同樣的輸入一定得到同樣的結果。
+
+```bash
+agentbox extract doc:3 --kind prices
+agentbox extract doc:1 doc:2 doc:3 --kind prices --save-table      # 一次抽多份文件
+agentbox extract --from doc:1,doc:2 --kind tables
+agentbox extract doc:4 --kind links --site nvidia.com
+agentbox extract doc:4 --kind dates --section 3 --grep founded --limit 10
+```
+
+| `--kind` | 抽出什麼 | 每個項目的主要欄位 |
+|---|---|---|
+| `tables` | Markdown 管線表格與殘留的 HTML `<table>`；每張表存成 `tbl:N` | `table`、`title`（所在段落標題）、`headers`、`rows_count`、`preview`（前 5 列） |
+| `prices` | `$1,299/yr`、`US$ 49 per user/month`、`€9,99`、`NT$ 300 元`、`¥1.2萬`、`$12–19/user/mo` | `value`、`currency`（ISO 代碼）、`period`、`per`、`raw` |
+| `dates` | `March 3, 2025`、`2025-03-03`、`3/4/2025`、`2023年5月1日`、`民國112年5月1日`、`Jan 2024` | `date`（ISO 格式）、`precision`（day／month）、`ambiguous`（`3/4/2025` 這種月日可能對調的寫法）、`raw` |
+| `people` | 「Jane Doe, CEO of Acme」、「CEO Jane Doe」、「執行長王小明」等句型 | `name`、`role`、`org`、`confidence` |
+| `links` | Markdown 連結與裸網址，一律轉成絕對網址；`--site` 只留指定網域 | `text`、`url`（連結本身）、`source`（文件網址） |
+| `numbers` | 帶單位或量級的數字：`$68.1 billion`、`12.5%`、`3.2萬`、`500 GiB` | `value`、`unit`、`raw` |
+| `emails` | 電子郵件地址（略過 `logo@2x.png` 這類圖檔名） | `email` |
+
+共同規則：
+
+- 每個項目都附 `doc`、`url`、`section`、`line` 與約 120 字的 `context`，引用時直接用；同一份文件內重複的項目會合併（例如 `March 3, 2025` 與 `2025-03-03` 只留一筆）。
+- `--limit` 預設 20；超過時回 `truncated:true`，`hint` 會建議用 `--grep`、`--section` 縮小範圍或調高上限。
+- `--save-table` 會把**全部**項目（不只顯示的那幾筆）存成一張 `tbl:N`，接著就能用 `table query` 排序、過濾。
+- `$` 預設當成美元，但網站是 `.tw`、`.ca`、`.au`、`.hk` 等國家網域時會換成當地貨幣；`¥` 在 `.cn` 是人民幣，其他網站是日圓。判斷不了的情況請看 `raw` 與 `context`。
+- `people` 是句型比對，不是真的人名辨識：每筆有 `confidence`，`hint` 也會提醒要回原文確認。
+- `fetch` 會把網頁裡真正的資料表格轉成 Markdown 表格（連結保留、合併儲存格補空格），排版用的表格則保持文字，所以 `extract --kind tables` 抓得到大部分價目表與規格表。
+
+## 表格：`table`
+
+`table` 處理 `tbl:N` handle，也直接吃 CSV、TSV、JSON（物件陣列、二維陣列，或 agentbox 外層裡的第一個陣列）與 Markdown 表格檔。
+
+```bash
+agentbox table show tbl:1                                  # 欄位、推斷的型別（number/currency/date/text）、列數、前 20 列
+agentbox table import prices.csv                           # 存成 tbl:N
+agentbox table query tbl:1 --where "Price < 100" --where "Plan contains pro" --sort -Price --limit 5
+agentbox table query tbl:1 --select Plan,Price --sort Price --format md
+agentbox table query tbl:1 --group-by Vendor --agg "count,avg:Price,max:Price" --format csv
+agentbox table query tbl:1 --where "Region = EU" --save    # 結果另存成新的 tbl:N
+agentbox table export tbl:2 --out cheapest.csv             # 先預覽，加 --apply 才寫檔（.csv／.tsv／.md／.json）
+```
+
+`--where` 只有一種寫法：`欄位 運算子 值`，運算子是 `=`、`!=`、`<`、`<=`、`>`、`>=`、`contains`、`startswith`。可以重複，條件之間是 AND。比較時會自動判斷型別：
+
+- 值看起來是數字時用數字比較，`$1,299/yr`、`US$ 49 per user/month`、`€9,99`、`1.2萬` 這類儲存格都會先轉成數字；資料量 `512 MiB`、`4 GiB`、`1 TB` 一律換算成 G 單位，所以 `Memory >= 2` 就是「至少 2 GB」。
+- 值是日期時用日期比較（`Launched >= 2024-06-01`，儲存格可以是 `March 3, 2025` 或 `2023年5月1日`）。
+- 其他情況是不分大小寫的文字比較。
+
+`--sort -Price` 是由大到小，`--sort Price` 由小到大，可重複指定多個鍵；空白或無法比較的儲存格（像 `Contact us`）一律排在最後。`--agg` 支援 `count`、`sum`、`avg`、`min`、`max`，輸出欄位叫 `sum_Price` 這種名稱。執行順序固定是 where → group → sort → select。
+
+欄位名稱不分大小寫，也容忍空白與符號差異（`price usd` 可以對到 `Price (USD)`）。打錯時錯誤訊息會列出所有欄位、最接近的名稱，以及改好的命令：
+
+```json
+{"ok":false,"error":{"code":"unknown_column","message":"no column named `Prise`; columns are: Plan, Price (USD), Seats"},
+ "hint":"Did you mean `Price (USD)`? Try: --sort \"-Price (USD)\""}
+```
+
+全域的 `--format csv` 只對表格輸出（`table show`、`table query`）有效，會直接印出 CSV；其他命令維持 JSON。
+
+在 `schema` 裡，表格功能拆成 `table_show`、`table_query`、`table_import`、`table_export` 四個工具（理由同報告工具：每個工具只列自己用得到的參數）；`extract` 則是一個工具加上 `kind` 列舉，因為各種 kind 的參數完全一樣。
+
+### 從搜尋到比較報告
+
+```bash
+# 1. 搜尋並把前三筆存成 doc
+agentbox search "Asana Monday ClickUp pricing per user per month" --max-results 4 --save 3
+
+# 2. 一次從三份文件抽出價格，全部存成 tbl:1
+agentbox extract doc:1 doc:2 doc:3 --kind prices --save-table
+
+# 3. 只看「每人每月」的價格，由便宜到貴
+agentbox table query tbl:1 --where "per = user" --where "period = month" --sort value --select value,raw,doc --format md
+
+# 4. 產生比較報告骨架，再把表格與引用填進去
+agentbox report build "Asana vs Monday vs ClickUp pricing" --template compare --columns "Tool,Entry price (USD/user/mo),Source" --out report.md --apply
+```
+
+第 3 步的實際輸出（2026 年 10 月）：
+
+| value | raw | doc |
+|---|---|---|
+| 7 | $7/user/mo | doc:1 |
+| 7 | $7/user/month | doc:2 |
+| 9 | $9/user/mo | doc:1 |
+| 10.99 | $10.99/user/mo | doc:1 |
 
 ## 建置
 

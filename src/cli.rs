@@ -21,7 +21,7 @@ Examples:
     disable_help_subcommand = true
 )]
 pub struct Cli {
-    /// Output format
+    /// Output format (csv applies to table output only)
     #[arg(long, global = true, value_enum, default_value_t = Format::Json)]
     pub format: Format,
 
@@ -33,6 +33,8 @@ pub struct Cli {
 pub enum Format {
     Json,
     Md,
+    /// CSV for table output (`table show/query`); other output stays JSON
+    Csv,
 }
 
 #[derive(Debug, Subcommand)]
@@ -135,45 +137,39 @@ pub enum Cmd {
         backend: Option<String>,
     },
 
-    /// [planned] Pull links, tables, numbers or dates out of a doc
-    #[command(after_help = "Example:\n  agentbox extract doc:1 --what tables")]
+    /// Pull tables, prices, dates, people, links, numbers or emails out of docs or files
+    #[command(
+        after_help = "Examples:\n  agentbox extract doc:3 --kind tables\n  agentbox extract doc:1 doc:2 --kind prices --save-table\n  agentbox extract --from doc:1,doc:2 --kind people --grep CEO\n  agentbox extract doc:4 --kind links --site github.com"
+    )]
     Extract {
-        /// Doc handle, e.g. doc:1
-        doc: String,
+        /// Doc handles (doc:N) or file paths; several allowed
+        sources: Vec<String>,
         /// What to extract
-        #[arg(long, default_value = "links", value_parser = ["links", "tables", "numbers", "dates", "emails"])]
-        what: String,
-        /// Keep only items containing this keyword
+        #[arg(long, value_parser = ["tables", "prices", "dates", "people", "links", "numbers", "emails"])]
+        kind: String,
+        /// More sources, comma-separated, e.g. doc:1,doc:2
+        #[arg(long)]
+        from: Option<String>,
+        /// Only this section number (from the fetch/read outline)
+        #[arg(long)]
+        section: Option<usize>,
+        /// Keep only items whose text contains this keyword
         #[arg(long)]
         grep: Option<String>,
+        /// Maximum items returned
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        /// Links only: keep links to this domain (subdomains included)
+        #[arg(long)]
+        site: Option<String>,
+        /// Also save all items as a table handle (tbl:N) for `table query`
+        #[arg(long)]
+        save_table: bool,
     },
 
-    /// [planned] Filter, sort and sum CSV / Markdown tables
-    #[command(
-        after_help = "Example:\n  agentbox table prices.csv --filter \"price<100\" --sort price --sum price"
-    )]
-    Table {
-        /// CSV file path or doc handle
-        source: String,
-        /// Row filter like `price<100` or `vendor=Dell`
-        #[arg(long)]
-        filter: Option<String>,
-        /// Sort by this column
-        #[arg(long)]
-        sort: Option<String>,
-        /// Sort descending
-        #[arg(long)]
-        desc: bool,
-        /// Add a total row for this column
-        #[arg(long)]
-        sum: Option<String>,
-        /// Comma-separated columns to keep
-        #[arg(long)]
-        cols: Option<String>,
-        /// Maximum rows
-        #[arg(long, default_value_t = 50)]
-        limit: u32,
-    },
+    /// Show, query (filter/sort/group), import or export tables
+    #[command(subcommand)]
+    Table(TableCmd),
 
     /// [planned] Stock quote and price history for a ticker
     #[command(after_help = "Example:\n  agentbox quote NVDA --range 1mo")]
@@ -344,6 +340,72 @@ pub enum ConfigCmd {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum TableCmd {
+    /// Columns with inferred types (number/currency/date/text), row count, first rows
+    #[command(
+        after_help = "Examples:\n  agentbox table show tbl:2\n  agentbox table show prices.csv --limit 5"
+    )]
+    Show {
+        /// Table handle (tbl:N) or a .csv/.tsv/.json/.md file
+        source: String,
+        /// Rows to show
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Filter, sort, group and aggregate rows (no regex or code needed)
+    #[command(
+        after_help = "Where: COLUMN OP VALUE, OP = != < <= > >= contains startswith. Repeat --where to AND.\nNumbers like \"$1,299/mo\" compare as numbers; dates by calendar order.\n\nExamples:\n  agentbox table query tbl:2 --where \"Price < 100\" --sort -Price --limit 5\n  agentbox table query tbl:3 --where \"currency = USD\" --sort value --select raw,value,doc\n  agentbox table query sales.csv --group-by Region --agg \"sum:Revenue,count\" --sort -sum_Revenue\n  agentbox table query tbl:2 --format csv"
+    )]
+    Query {
+        /// Table handle (tbl:N) or a .csv/.tsv/.json/.md file
+        source: String,
+        /// Comma-separated columns to keep, in this order
+        #[arg(long)]
+        select: Option<String>,
+        /// Row filter like "Price < 100" or "Plan contains pro" (repeatable, AND)
+        #[arg(long = "where", id = "where")]
+        wheres: Vec<String>,
+        /// Sort column; prefix with - for descending, e.g. -Price (repeatable)
+        #[arg(long, allow_hyphen_values = true)]
+        sort: Vec<String>,
+        /// Maximum rows returned (default 20)
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Group rows by this column
+        #[arg(long)]
+        group_by: Option<String>,
+        /// Aggregates like "sum:Price,avg:Price,count" (sum avg min max count)
+        #[arg(long)]
+        agg: Option<String>,
+        /// Save the result as a new tbl:N
+        #[arg(long)]
+        save: bool,
+    },
+    /// Import a CSV/TSV/JSON/Markdown table file as a tbl:N handle
+    #[command(
+        after_help = "Examples:\n  agentbox table import prices.csv\n  agentbox table import results.json"
+    )]
+    Import {
+        /// File path (.csv, .tsv, .json array of objects, .md pipe table)
+        file: String,
+    },
+    /// Write a table to .csv, .tsv, .md or .json (preview unless --apply)
+    #[command(
+        after_help = "Examples:\n  agentbox table export tbl:2 --out prices.csv\n  agentbox table export tbl:2 --out prices.md --apply"
+    )]
+    Export {
+        /// Table handle (tbl:N) or a table file
+        source: String,
+        /// Output path; the extension picks the format
+        #[arg(long)]
+        out: String,
+        /// Actually write the file
+        #[arg(long)]
+        apply: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 pub enum ReportCmd {
     /// Draft a Markdown skeleton with exact headings, TODOs, notes and sources
     #[command(
@@ -355,7 +417,7 @@ pub enum ReportCmd {
         /// Built-in name, user template name, or path to a .toml file
         #[arg(long, default_value = "brief")]
         template: String,
-        /// Number of numbered items (templates with `{n}` sections)
+        /// Number of numbered items (for templates with a repeated, numbered section)
         #[arg(long)]
         n: Option<usize>,
         /// Comma-separated table columns (templates with a table)

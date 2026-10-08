@@ -5,16 +5,18 @@ mod cmd;
 mod config;
 mod dom;
 mod envelope;
+mod extract;
 mod markdown;
 mod render;
 mod report;
 mod schema;
 mod state;
+mod table;
 #[cfg(test)]
 mod testutil;
 
 use clap::Parser;
-use cli::{Cli, Cmd, ConfigCmd, FileCmd, Format, NoteCmd, ReportCmd, TemplateCmd};
+use cli::{Cli, Cmd, ConfigCmd, FileCmd, Format, NoteCmd, ReportCmd, TableCmd, TemplateCmd};
 use envelope::{envelope, AppError, CmdResult};
 use state::Store;
 use std::io::{Read, Write};
@@ -89,6 +91,12 @@ fn emit(res: &CmdResult, format: Format) -> ExitCode {
     let text = match format {
         Format::Json => serde_json::to_string(&env).expect("envelope serializes"),
         Format::Md => render::render_md(&env).trim_end().to_string(),
+        Format::Csv => match res {
+            Ok(out) => table::envelope_csv(&out.data)
+                .map(|c| c.trim_end().to_string())
+                .unwrap_or_else(|| serde_json::to_string(&env).expect("envelope serializes")),
+            Err(_) => serde_json::to_string(&env).expect("envelope serializes"),
+        },
     };
     let mut stdout = std::io::stdout().lock();
     let _ = writeln!(stdout, "{text}");
@@ -185,8 +193,57 @@ fn dispatch(cmd: Cmd, store: &Store) -> CmdResult {
         Cmd::Config(ConfigCmd::Get { key }) => config::get(store, key.as_deref(), &config::env_for),
         Cmd::Config(ConfigCmd::Unset { key }) => config::unset(store, &key),
         Cmd::Config(ConfigCmd::Path) => config::show_path(store),
-        Cmd::Extract { .. } => cmd::stubs::not_implemented("extract"),
-        Cmd::Table { .. } => cmd::stubs::not_implemented("table"),
+        Cmd::Extract {
+            sources,
+            kind,
+            from,
+            section,
+            grep,
+            limit,
+            site,
+            save_table,
+        } => extract::run(
+            store,
+            &extract::ExtractArgs {
+                sources,
+                from,
+                kind,
+                section,
+                grep,
+                limit,
+                site,
+                save_table,
+            },
+        ),
+        Cmd::Table(TableCmd::Show { source, limit }) => table::run_show(store, &source, limit),
+        Cmd::Table(TableCmd::Query {
+            source,
+            select,
+            wheres,
+            sort,
+            limit,
+            group_by,
+            agg,
+            save,
+        }) => table::run_query(
+            store,
+            &table::QueryArgs {
+                source,
+                query: table::query::Query {
+                    select,
+                    wheres,
+                    sorts: sort,
+                    group_by,
+                    agg,
+                },
+                limit,
+                save,
+            },
+        ),
+        Cmd::Table(TableCmd::Import { file }) => table::run_import(store, &file),
+        Cmd::Table(TableCmd::Export { source, out, apply }) => {
+            table::run_export(store, &source, &out, apply)
+        }
         Cmd::Quote { .. } => cmd::stubs::not_implemented("quote"),
         Cmd::Market { .. } => cmd::stubs::not_implemented("market"),
         Cmd::Report(ReportCmd::Build {

@@ -19,6 +19,8 @@
 
 結束碼：成功 0、執行錯誤 1、參數解析錯誤 2。參數錯誤同樣用外層輸出到 stdout，不會只印 clap 的純文字錯誤；`--help` 與 `--version` 則照常輸出純文字。
 
+`--format csv` 只在 `data` 同時有 `columns` 與 `rows`（`table show`、`table query`）時輸出純 CSV，其他命令照常輸出 JSON 外層，避免模型拿到半套格式。
+
 `--format md` 會把同一個外層轉成 Markdown：純量欄位變成項目清單、物件陣列變成表格、多行字串原樣輸出、`diff` 包在 ```` ```diff ```` 區塊內，最後一行是 `> hint: ...`。`report check` 的結果（`data` 同時有 `pass` 與 `issues`）例外，會畫成待辦清單：PASS/FAIL 標頭、分數、統計，每個問題一行 `- [ ] **error** `rule` (line N): ...`，下面接 fix。
 
 ## 2. 文件 handle
@@ -54,6 +56,8 @@ $AGENTBOX_HOME（預設 ~/.agentbox 或 %USERPROFILE%\.agentbox）
 ├── docs/
 │   ├── 1.md      轉換後的內容
 │   └── 1.json    中繼資料：url、title、content_type、fetched_at
+├── tables/
+│   └── 1.json    表格：id、title、source、columns、rows（儲存格是 JSON 值）、created
 └── notes.jsonl   筆記，每行一個 JSON：id、text、source、tag、created
 ```
 
@@ -98,3 +102,33 @@ $AGENTBOX_HOME（預設 ~/.agentbox 或 %USERPROFILE%\.agentbox）
 - 編號段落先找完全符合格式的標題，再找近似寫法（`1)`、`1:`、`1-`、`1、`，或層級不對）；若數量還不夠，緊接在編號區後、且不是其他範本段落的標題（如 `## Rocket`）會被視為漏了編號的項目，直接給改名命令。
 - 分數 = 100 − 12 × 錯誤數 − 4 × 警告數（最低 0），`pass` 等於沒有錯誤。檢查沒過不算執行失敗：外層仍是 `ok:true`，結束碼 0。
 - `sources_from_notes = true` 時，報告裡出現的每個網址都必須能在 notes 或 docs 中找到（比對前先正規化網址），否則回報 `source_not_in_notes` 並建議先 `fetch` 再 `note add`。
+
+## 8. 抽取（extract）
+
+- **固定規則，不用語言模型**：所有 kind 都是正規表示式加上少量啟發式，同樣的輸入一定得到同樣的輸出。模型只要選 `--kind`，不需要自己寫正規表示式。
+- **輸入**：一或多個 `doc:N`／檔案（位置參數，或 `--from doc:1,doc:2`，逗號分隔也可以，重複的會去掉）。.html／.htm 檔會先用和 `fetch` 相同的轉換器轉成 Markdown。
+- **前處理**：逐行處理並略過程式碼區塊；比對前先把 Markdown 還原成純文字（去掉標題與清單符號、`**`、反斜線跳脫、表格外框，連結只留文字），並移除 `[1]`、`[citation needed]` 這類註腳標記。`--section` 用和 `read` 相同的章節編號，`--grep` 是不分大小寫的子字串，先過濾行再抽取。
+- **項目欄位**：每個項目都有 kind 專屬欄位，加上 `context`（約 120 字元，必要時加 `…`）、`section`、`line`、`doc`、`url`。`links` 的 `url` 是連結本身，文件網址放在 `source`。
+- **去重**：同一份文件內，以 kind 的正規化值去重（價格：數值＋幣別＋期間＋單位；日期：ISO 值；人名：姓名＋職稱；連結：網址）。不同文件的相同項目會分別保留，這樣才看得出各來源的說法。
+- **限制輸出**：`--limit` 預設 20，`total` 永遠是去重後的總數；截斷時 `truncated:true`，hint 建議 `--grep`／`--section`／`--limit`。`--save-table` 存的是全部項目。
+- **價格**：前綴符號／代碼（`US$`、`NT$`、`€`、`USD`…）或後綴（`元`、`円`、`EUR`、`dollars`），可帶量級（`k`、`million`、`萬`），之後讀「期間／單位」尾巴（`/user/mo`、`per seat per year`、`billed annually`、`每月`、`/GB`），期間與單位各只取第一次出現的值，所以「`/month`, billed annually」仍是 month。價格區間（`$12–19`）取下限，`raw` 保留原文。`$` 依文件網域的國碼推斷幣別（`.tw` → TWD、`.ca` → CAD…，否則 USD），`¥` 在 `.cn` 為 CNY，其他為 JPY，hint 會提醒這是推斷。
+- **日期**：民國年、`年月日`、ISO（可帶時間）、英文月名（月日年、日月年）、數字（預設美式月/日，第一段 >12 才當日/月，並標 `ambiguous`）、月份精度（`Jan 2024`）。先比對較長、較明確的格式，已比對的範圍會遮罩，最後用 chrono 驗證日期確實存在。
+- **人名**：句型比對（「NAME, ROLE of ORG」、「ROLE NAME」、「NAME (ROLE)」、「ROLE: NAME」、中文職稱＋2–3 個漢字），每個句型有固定 `confidence`（0.5–0.9），加上組織字、職稱字的排除清單。輸出一律附 hint，說明這是啟發式結果。
+- **表格**：Markdown 管線表格與殘留的 HTML `<table>` 片段。每張表存成 `tbl:N`，標題取所在段落標題（去掉 `(part k/n)`）；內容完全相同的表格會重用既有 handle，重跑 extract 不會一直長出新表。
+
+### fetch 的表格轉換
+
+htmd 預設會把 `<table>` 攤平成文字。`fetch` 註冊了自己的 table handler：至少 2 欄 2 列、且每格不超過 300 字元的表格轉成 Markdown 管線表格（`<th>` 或第一列當表頭，`colspan` 補空格，巢狀表格攤平，儲存格內的連結保留為 `[文字](絕對網址)`，`|` 會跳脫）；其他當成排版用表格，照原本方式轉成文字。`rowspan` 目前不展開。
+
+## 9. 表格（table）
+
+- **來源**：`tbl:N`，或依副檔名／內容判斷的 CSV（RFC 4180，含 BOM 與引號）、TSV、JSON（物件陣列、二維陣列、純量陣列，或物件內深度 3 以內的第一個陣列，所以 agentbox 自己的輸出也能直接匯入）、Markdown（取第一張表，並回報檔案裡共有幾張）。空白表頭補成 `columnN`，重複表頭加 `_2`。
+- **型別推斷**：非空白儲存格有 80% 以上是數字就是 `number`（有幣別時是 `currency`），80% 以上是日期就是 `date`，否則 `text`。`-`、`—`、`n/a`、`null` 視為空白。
+- **數值解析**：`$1,299/yr`、`US$ 49 per user/month`、`€9,99`（單獨的「逗號＋兩位數」視為小數點）、`1.2萬`、`3.5 billion`、`12%` 都會轉成數字；數字後面的文字不能再含數字。資料量（`512 MiB`、`4 GiB`、`1 TB`）換算成 G 單位（GB 與 GiB 視為同級），所以 `Memory >= 2` 符合直覺。計算結果四捨五入到 12 位有效數字，避免浮點雜訊。
+- **where**：`欄位 運算子 值`，運算子只有 `= != < <= > >= contains startswith`（也接受 `==`、`<>`、`starts with`），值可加引號。值能解析成數字就用數字比較，能解析成日期就用日期比較，否則用不分大小寫的文字比較；不支援 OR、NOT 與括號，刻意保持「一行一個條件」。
+- **sort**：`-欄位` 遞減，`欄位` 或 `+欄位` 遞增，也接受 `欄位 desc`；多個鍵穩定排序。欄位有一半以上可轉成數字時以數字排序，否則以日期、再以文字排序；空白與無法比較的儲存格一律排最後（不論升降冪）。
+- **group／agg**：`--group-by 欄位 --agg "count,sum:Price,avg:Score,min:X,max:X"`，輸出欄位為 `count`、`sum_Price`…；順序固定是 where → group → sort → select。
+- **欄位比對**：完全相同 → 不分大小寫 → 只比英數字（`price usd` 對到 `Price (USD)`）；都失敗時回 `unknown_column`，列出全部欄位、以編輯距離找最接近的名稱，hint 給出改好的參數。hint 裡的命令會依內容加引號（含 `$` 的欄位用單引號，避免 shell 展開）。
+- **儲存**：`table import` 與 `query --save` 都會寫 `tables/N.json`；與最近 200 張表中內容完全相同的表會重用 handle。`query` 顯示預設 20 列，只有明確給 `--limit` 時存下的表才會截斷。
+- **匯出**：`table export --out` 依副檔名輸出 CSV／TSV／Markdown／JSON（物件陣列），走 `file write` 相同的預覽／`--apply` 流程。
+- **schema**：`table_show`、`table_query`、`table_import`、`table_export` 是四個獨立工具（理由同第 6 節）；`extract` 是單一工具加上 `kind` 列舉，因為所有 kind 共用同一組參數，拆開只會讓工具清單變長。

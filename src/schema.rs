@@ -47,6 +47,32 @@ const fn pos(name: &'static str, desc: &'static str) -> Param {
         choices: &[],
     }
 }
+const fn pos_opt(name: &'static str, desc: &'static str) -> Param {
+    Param {
+        name,
+        kind: Kind::Str,
+        required: false,
+        positional: true,
+        desc,
+        default: None,
+        choices: &[],
+    }
+}
+const fn req_pick(
+    name: &'static str,
+    choices: &'static [&'static str],
+    desc: &'static str,
+) -> Param {
+    Param {
+        name,
+        kind: Kind::Str,
+        required: true,
+        positional: false,
+        desc,
+        default: None,
+        choices,
+    }
+}
 const fn opt(name: &'static str, kind: Kind, desc: &'static str) -> Param {
     Param {
         name,
@@ -229,27 +255,61 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "extract",
         path: &["extract"],
-        implemented: false,
-        desc: "Extract links, tables, numbers, dates or emails from a stored doc.",
+        implemented: true,
+        desc: "Pull structured items out of stored docs or local files, deterministically (no regex needed). kind=tables saves each table as tbl:N; prices gives value/currency/period/per; dates gives ISO dates; people gives heuristic name+role pairs; links, numbers (with units/percent/magnitude) and emails. Every item carries its doc, url, section and line for citing.",
         params: &[
-            pos("doc", "Doc handle, e.g. doc:3"),
-            choice("what", "links", &["links", "tables", "numbers", "dates", "emails"], "What to extract"),
-            opt("grep", Kind::Str, "Keep only items containing this keyword"),
+            pos_opt("sources", "Doc handle(s) or file path(s), comma-separated, e.g. doc:1 or doc:1,doc:2"),
+            req_pick("kind", &["tables", "prices", "dates", "people", "links", "numbers", "emails"], "What to extract"),
+            opt("from", Kind::Str, "More sources, comma-separated (same as sources)"),
+            opt("section", Kind::Int, "Only this section number from the doc outline"),
+            opt("grep", Kind::Str, "Keep only items whose text contains this keyword"),
+            dflt("limit", Kind::Int, "20", "Maximum items returned"),
+            opt("site", Kind::Str, "kind=links only: keep links to this domain"),
+            flag("save_table", "Also save all items as a table (tbl:N) to sort/filter with table_query"),
         ],
     },
     Spec {
-        name: "table",
-        path: &["table"],
-        implemented: false,
-        desc: "Filter, sort and total a CSV file or a table from a doc.",
+        name: "table_show",
+        path: &["table", "show"],
+        implemented: true,
+        desc: "Show a table's columns with inferred types (number/currency/date/text), its row count and first rows. Source is a tbl:N handle (from extract or table_import) or a CSV/TSV/JSON/Markdown file.",
         params: &[
-            pos("source", "CSV file path or doc handle"),
-            opt("filter", Kind::Str, "Row filter like price<100 or vendor=Dell"),
-            opt("sort", Kind::Str, "Column to sort by"),
-            flag("desc", "Sort descending"),
-            opt("sum", Kind::Str, "Column to total"),
-            opt("cols", Kind::Str, "Comma-separated columns to keep"),
-            dflt("limit", Kind::Int, "50", "Maximum rows"),
+            pos("source", "Table handle like tbl:2, or a table file path"),
+            dflt("limit", Kind::Int, "20", "Rows to show"),
+        ],
+    },
+    Spec {
+        name: "table_query",
+        path: &["table", "query"],
+        implemented: true,
+        desc: "Filter, sort, group and aggregate table rows. where items look like \"Price < 100\" (ops: = != < <= > >= contains startswith; ANDed); numbers such as \"$1,299/mo\" compare numerically. sort items are column names, prefix - for descending. Optionally save the result as a new tbl:N.",
+        params: &[
+            pos("source", "Table handle like tbl:2, or a table file path"),
+            opt("select", Kind::Str, "Comma-separated columns to keep, e.g. Plan,Price"),
+            opt("where", Kind::List, "Row filters, e.g. [\"Price < 100\", \"Plan contains pro\"]"),
+            opt("sort", Kind::List, "Sort keys, e.g. [\"-Price\"] for most expensive first"),
+            opt("limit", Kind::Int, "Maximum rows returned (default 20)"),
+            opt("group_by", Kind::Str, "Group rows by this column"),
+            opt("agg", Kind::Str, "Aggregates, e.g. sum:Price,avg:Price,count"),
+            flag("save", "Save the result as a new tbl:N"),
+        ],
+    },
+    Spec {
+        name: "table_import",
+        path: &["table", "import"],
+        implemented: true,
+        desc: "Import a CSV, TSV, JSON (array of objects) or Markdown pipe-table file as a tbl:N handle.",
+        params: &[pos("file", "Path to the table file")],
+    },
+    Spec {
+        name: "table_export",
+        path: &["table", "export"],
+        implemented: true,
+        desc: "Write a table to a .csv, .tsv, .md or .json file (format from the extension). Shows a diff preview unless apply is true.",
+        params: &[
+            pos("source", "Table handle like tbl:2, or a table file path"),
+            req("out", "Output file path, e.g. prices.csv"),
+            flag("apply", "Actually write the file"),
         ],
     },
     Spec {

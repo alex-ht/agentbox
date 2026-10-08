@@ -129,7 +129,8 @@ fn render_table(items: &[Value], out: &mut String) {
             }
         }
     }
-    out.push_str(&format!("| {} |\n", cols.join(" | ")));
+    let heads: Vec<String> = cols.iter().map(|c| c.replace('|', "\\|")).collect();
+    out.push_str(&format!("| {} |\n", heads.join(" | ")));
     out.push_str(&format!("|{}\n", "---|".repeat(cols.len())));
     for it in items {
         let cells: Vec<String> = cols
