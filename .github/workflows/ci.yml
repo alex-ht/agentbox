@@ -6,6 +6,11 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      build:
+        description: "Also build release artifacts (never publishes a release)"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -21,9 +26,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-2025]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -38,21 +43,22 @@ jobs:
 
   build:
     name: build (${{ matrix.target }})
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Tags build and publish; a manual run can build artifacts only.
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build)
     needs: test
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-musl
             archive: tar.gz
-          - os: windows-latest
+          - os: windows-2025
             target: x86_64-pc-windows-msvc
             archive: zip
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -69,12 +75,19 @@ jobs:
           # Static CRT so the .exe has no VC++ runtime dependency.
           RUSTFLAGS: ${{ contains(matrix.target, 'msvc') && '-C target-feature=+crt-static' || '' }}
         run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Smoke test
+        shell: bash
+        run: |
+          bin="target/${{ matrix.target }}/release/agentbox"
+          [ -f "$bin.exe" ] && bin="$bin.exe"
+          "$bin" --version
+          "$bin" calc "1+1"
       - name: Package
         shell: bash
         run: |
-          name="agentbox-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          name="agentbox-${GITHUB_REF_NAME//\//-}-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          cp README.md LICENSE "dist/$name/"
+          cp README.md CHANGELOG.md LICENSE "dist/$name/"
           if [ "${{ matrix.archive }}" = "zip" ]; then
             cp "target/${{ matrix.target }}/release/agentbox.exe" "dist/$name/"
             (cd dist && 7z a "$name.zip" "$name" >/dev/null)
@@ -82,7 +95,7 @@ jobs:
             cp "target/${{ matrix.target }}/release/agentbox" "dist/$name/"
             tar -C dist -czf "dist/$name.tar.gz" "$name"
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: dist/*.${{ matrix.archive }}
@@ -90,21 +103,42 @@ jobs:
 
   release:
     name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum *.tar.gz *.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          ls -la
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ls -la dist
+          sed "s/{{VERSION}}/${GITHUB_REF_NAME}/g" .github/RELEASE_NOTES.md > notes.md
+          {
+            echo
+            echo '### SHA256'
+            echo
+            echo '```'
+            cat dist/SHA256SUMS.txt
+            echo '```'
+          } >> notes.md
+          flags=()
+          # Pre-release tags (v0.2.0-rc.1, v0.0.0-rc.test) become draft pre-releases.
+          case "$GITHUB_REF_NAME" in *-*) flags=(--draft --prerelease) ;; esac
           gh release create "$GITHUB_REF_NAME" dist/* \
             --repo "$GITHUB_REPOSITORY" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes
+            --title "agentbox $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            --verify-tag \
+            "${flags[@]}"

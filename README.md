@@ -392,7 +392,7 @@ sudo apt-get install gcc-mingw-w64-x86-64
 cargo build --release --target x86_64-pc-windows-gnu
 ```
 
-推送 `v*` 標籤時，GitHub Actions 會自動建置 `x86_64-unknown-linux-musl` 與 `x86_64-pc-windows-msvc` 兩個版本並附到 GitHub Release。
+推送 `v*` 標籤時，GitHub Actions 會自動建置 `x86_64-unknown-linux-musl` 與 `x86_64-pc-windows-msvc` 兩個版本，連同 `SHA256SUMS.txt` 附到 GitHub Release；名稱含 `-` 的標籤（例如 `v0.2.0-rc.1`）會建成草稿的預先發行版。手動執行 workflow（`workflow_dispatch`）只建置 artifacts，不會發布。各版本的變更見 [CHANGELOG.md](CHANGELOG.md)。
 
 ### 測試
 
