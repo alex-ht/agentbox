@@ -201,6 +201,52 @@ mod tests {
         assert!(md.len() / 4 < 5000, "SKILL.md is ~{} tokens", md.len() / 4);
     }
 
+    /// Skill version, `compatibility` and installer downloads track Cargo.toml.
+    #[test]
+    fn versions_and_installers_match_cargo() {
+        let ver = env!("CARGO_PKG_VERSION");
+        let md = md_files()
+            .into_iter()
+            .find(|(p, _)| p == "SKILL.md")
+            .unwrap()
+            .1;
+        let fm = md.split("\n---\n").next().unwrap();
+        assert!(
+            fm.contains(&format!("  version: \"{ver}\"")),
+            "metadata.version != {ver}"
+        );
+        assert!(
+            fm.contains(&format!("(v{ver}+)")),
+            "compatibility must require v{ver}+"
+        );
+        let vals = |key: &str| -> Vec<String> {
+            fm.lines()
+                .filter_map(|l| l.trim().trim_start_matches("- ").strip_prefix(key))
+                .map(|v| v.trim().trim_matches('"').to_string())
+                .collect()
+        };
+        let urls = vals("url:");
+        let sums = vals("sha256:");
+        assert_eq!(urls.len(), sums.len(), "every download needs a sha256");
+        let prefix = format!(
+            "https://github.com/alex-ht/agentbox/releases/download/v{ver}/agentbox-v{ver}-"
+        );
+        for u in &urls {
+            assert!(
+                u.starts_with(&prefix),
+                "installer url {u} is not the v{ver} release"
+            );
+        }
+        for h in &sums {
+            assert!(
+                h.len() == 64
+                    && h.chars()
+                        .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+                "sha256 `{h}` is not 64 lowercase hex chars"
+            );
+        }
+    }
+
     #[test]
     fn referenced_files_exist() {
         let md = md_files()

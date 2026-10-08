@@ -1,0 +1,3 @@
+# Test fixtures that look like keys but are not real secrets.
+524d583a4e8928389a6ecee9f62dfbb3bbebcc29:src/quote/tests.rs:generic-api-key:225
+src/quote/tests.rs:generic-api-key:225

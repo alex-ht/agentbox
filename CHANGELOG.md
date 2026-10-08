@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-08
+
+讓小模型 agent 真的會用 agentbox：附上 Agent Skill，並補上幾個讓模型少犯 shell 錯誤的功能。
+
 ### 新增
 
 - **Agent Skill**：`skills/agentbox/`（agentskills.io 格式，英文）教小模型怎麼用 agentbox：`SKILL.md` 加上 `references/` 裡的細節與常見任務做法；`agentbox skill install [--dir] [--apply]` 安裝到 `~/.agents/skills/agentbox` 或指定目錄。release 壓縮檔也會附上這份資料夾。
@@ -34,5 +38,6 @@
 - **設定**：`config set|get|unset|path` 管理 Tavily、Stooq 金鑰；金鑰只從環境變數或標準輸入讀取，任何輸出都只顯示遮罩後的值。
 - **接進 agent 框架**：`schema` 輸出 26 個 OpenAI 風格的 function tool，`call` 用工具名稱與 JSON 參數執行；單元測試確保 schema 與命令列定義一致。
 
-[Unreleased]: https://github.com/alex-ht/agentbox/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/alex-ht/agentbox/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/alex-ht/agentbox/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/alex-ht/agentbox/releases/tag/v0.1.0

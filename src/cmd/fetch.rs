@@ -207,7 +207,7 @@ pub fn process_body(
         return Err(AppError::new(
             "unsupported_content",
             format!("content type `{mime}` is not text or HTML"),
-            "Only HTML, text, JSON and XML are supported in v0.1. Look for an HTML version of the page.",
+            "Only HTML, text, JSON and XML are supported. Look for an HTML version of the page.",
         ));
     }
     let text = decode(bytes, &ct, is_html);

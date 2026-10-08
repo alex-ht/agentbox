@@ -10,10 +10,10 @@ description: >
   facts from the web, current numbers, citations, a report file, or a file
   edit. Do not use for small talk, opinions, or answers that need no source,
   and not for trivial math that does not go into an answer.
-compatibility: Requires the `agentbox` binary (v0.1.0+) on PATH. Needs network access for search, fetch, quote and market. Optional TAVILY_API_KEY gives better search; without it agentbox uses keyless DuckDuckGo/Bing.
+compatibility: Requires the `agentbox` binary (v0.2.0+) on PATH. Needs network access for search, fetch, quote and market. Optional TAVILY_API_KEY gives better search; without it agentbox uses keyless DuckDuckGo/Bing.
 metadata:
   author: alex-ht
-  version: "0.1.0"
+  version: "0.2.0"
   standard: agentskills.io
   homepage: https://github.com/alex-ht/agentbox
   openclaw:
