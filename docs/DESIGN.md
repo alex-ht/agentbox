@@ -49,16 +49,26 @@
 
 ```
 $AGENTBOX_HOME（預設 ~/.agentbox 或 %USERPROFILE%\.agentbox）
+├── config.toml   設定（Unix 上權限 0600），例如 [tavily] api_key、[search] backend
 ├── docs/
 │   ├── 1.md      轉換後的內容
 │   └── 1.json    中繼資料：url、title、content_type、fetched_at
 └── notes.jsonl   筆記，每行一個 JSON：id、text、source、tag、created
 ```
 
+`search --save N` 存下的結果和 `fetch` 一樣是 `doc:N`；來源是 Tavily 全文時，`content_type` 會標成 `text/markdown; source=tavily`。
+
 ## 4. 有副作用的命令
 
 會改動使用者檔案的命令（`file write`、`file replace`，以及之後的 `report --out`）預設只回傳 diff 預覽與 `applied:false`；同一個命令加上 `--apply` 才寫入。`file replace` 要求 `--find` 恰好出現一次，出現 0 次或多次都會回錯並在 `hint` 說明怎麼修正（多次時可加 `--all`）。
 
-## 5. 工具 schema
+## 5. 金鑰與機密
 
-`src/schema.rs` 有一張手寫的規格表，`agentbox schema` 由它產生 OpenAI function tool 格式；`agentbox call` 也用同一張表把 JSON 參數轉回命令列。單元測試會逐一比對規格表與 clap 定義（參數名稱、是否必填、預設值、可選值），兩邊不一致就會失敗，避免 schema 與實際行為脫節。巢狀子命令的工具名稱用底線連接，例如 `file_replace`、`note_add`。
+- 金鑰只從環境變數（`TAVILY_API_KEY`）或 `config.toml` 讀取，不接受命令列旗標，避免出現在 agent 對話紀錄與程序清單。
+- 任何輸出（資料、錯誤訊息、hint）都不得包含金鑰。`search` 在回傳前會再把金鑰字串替換成 `[redacted]`，就算上游 API 把金鑰回傳在錯誤訊息裡也一樣；`config get` 只顯示公開前綴（如 `tvly-dev-****`）、長度與 FNV 短指紋。
+- `config` 不放進 `schema`，`call` 也無法呼叫它：設定金鑰是使用者的事，不該經過模型。
+- 測試用的服務位址可用 `AGENTBOX_TAVILY_URL`、`AGENTBOX_DDG_URL`、`AGENTBOX_BING_URL` 覆寫，單元測試用內建的 std `TcpListener` 假伺服器，不需要真的金鑰。
+
+## 6. 工具 schema
+
+`src/schema.rs` 有一張手寫的規格表，`agentbox schema` 由它產生 OpenAI function tool 格式；`agentbox call` 也用同一張表把 JSON 參數轉回命令列。單元測試會逐一比對規格表與 clap 定義（參數名稱、是否必填、預設值、可選值），兩邊不一致就會失敗，避免 schema 與實際行為脫節。巢狀子命令的工具名稱用底線連接，例如 `file_replace`、`note_add`。可重複的旗標（如 `search --site`）在 schema 裡是字串陣列，`call` 會展開成多個 `--site=...`。

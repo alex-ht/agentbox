@@ -19,6 +19,21 @@ const MAX_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_OUTLINE: usize = 60;
 
 pub fn run(store: &Store, url: &str, timeout_secs: u64) -> CmdResult {
+    let doc = fetch_doc(store, url, timeout_secs)?;
+    Ok(summarize(doc.id, &doc.title, &doc.url, &doc.body))
+}
+
+/// A fetched and stored document.
+#[derive(Debug, Clone)]
+pub struct FetchedDoc {
+    pub id: u64,
+    pub title: String,
+    pub url: String,
+    pub body: String,
+}
+
+/// Fetch `url`, convert it and store it as a new doc.
+pub fn fetch_doc(store: &Store, url: &str, timeout_secs: u64) -> Result<FetchedDoc, AppError> {
     let url = normalize_url(url)?;
     let client = reqwest::blocking::Client::builder()
         .user_agent(USER_AGENT)
@@ -76,7 +91,12 @@ pub fn run(store: &Store, url: &str, timeout_secs: u64) -> CmdResult {
         fetched_at: chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
     };
     let id = store.save_doc(meta, &body)?;
-    Ok(summarize(id, &title, &final_url, &body))
+    Ok(FetchedDoc {
+        id,
+        title,
+        url: final_url,
+        body,
+    })
 }
 
 /// Build the fetch response for a stored doc.
@@ -246,8 +266,7 @@ fn charset_param(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{BufRead, BufReader, Write};
-    use std::net::TcpListener;
+    use crate::testutil::{http, serve};
 
     #[test]
     fn normalizes_urls() {
@@ -277,38 +296,10 @@ mod tests {
         );
     }
 
-    /// Serve `responses` one connection each on a local port; returns the base URL.
-    fn serve(responses: Vec<String>) -> String {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        std::thread::spawn(move || {
-            for resp in responses {
-                let (mut stream, _) = listener.accept().unwrap();
-                let mut reader = BufReader::new(stream.try_clone().unwrap());
-                let mut line = String::new();
-                while reader.read_line(&mut line).unwrap_or(0) > 0 {
-                    if line == "\r\n" {
-                        break;
-                    }
-                    line.clear();
-                }
-                stream.write_all(resp.as_bytes()).unwrap();
-            }
-        });
-        format!("http://{addr}")
-    }
-
-    fn http(status: &str, ctype: &str, body: &str) -> String {
-        format!(
-            "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-            body.len()
-        )
-    }
-
     #[test]
     fn fetch_end_to_end_against_local_server() {
         let html = "<html><head><title>Local</title></head><body><h1>Hello</h1><p>World</p><h2>More</h2><p>x</p></body></html>";
-        let base = serve(vec![
+        let (base, _rx) = serve(vec![
             http("200 OK", "text/html; charset=utf-8", html),
             http("404 Not Found", "text/plain", "nope"),
         ]);

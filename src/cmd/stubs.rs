@@ -5,7 +5,6 @@ use crate::envelope::{AppError, CmdResult};
 
 pub fn not_implemented(name: &str) -> CmdResult {
     let hint = match name {
-        "search" => "Fallback: `agentbox fetch \"https://html.duckduckgo.com/html/?q=YOUR+QUERY\"` then `agentbox read doc:N --grep KEYWORD`.",
         "extract" => "Fallback: `agentbox read doc:N --grep KEYWORD` and copy the values you need.",
         "table" => "Fallback: `agentbox file read PATH` and compute totals with `agentbox calc`.",
         "quote" => "Fallback: `agentbox fetch \"https://stooq.com/q/l/?s=aapl.us&f=sd2t2ohlcv&h&e=csv\"` (replace aapl.us with the ticker).",
@@ -29,7 +28,7 @@ mod tests {
 
     #[test]
     fn every_stub_has_specific_hint() {
-        for name in ["search", "extract", "table", "quote", "market", "report"] {
+        for name in ["extract", "table", "quote", "market", "report"] {
             let e = not_implemented(name).unwrap_err();
             assert_eq!(e.code, "not_implemented");
             assert!(e.hint.starts_with("Fallback:"), "{name}");

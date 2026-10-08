@@ -141,7 +141,8 @@ fn grep(
             }
         }
         for (s, e, count) in windows {
-            if snippets.len() >= GREP_MAX_SNIPPETS || budget == 0 {
+            // Stop rather than emit a uselessly short tail snippet.
+            if snippets.len() >= GREP_MAX_SNIPPETS || budget < 120.min(max_chars) {
                 truncated = true;
                 continue;
             }

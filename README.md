@@ -4,7 +4,7 @@
 
 小模型最常卡在「工具之間的膠水」：抓網頁後要自己寫 Python 清 HTML、要用 `grep | jq` 找數字、算個漲跌幅還得開 REPL。agentbox 把這些膠水做進工具裡，模型只要選對子命令、填對參數，就能完成像 PinchBench 那類任務：查股價、找活動、市場調查、Polymarket 簡報、查高階主管、深度研究、競品研究、找開源替代品、比價、IT 採購、歐盟法規、BYOK 最佳實務等。
 
-> 目前版本：v0.1（初始骨架）。部分子命令先佔位，見下方狀態表。
+> 目前版本：v0.1。部分子命令先佔位，見下方狀態表。
 
 ## 設計原則
 
@@ -28,9 +28,10 @@
 | `now [--tz]` | 目前時間（ISO 8601）、星期、UTC 偏移，可指定時區 | ✅ 可用 |
 | `file read\|write\|replace` | 讀取文字檔（可指定行範圍）；寫入與精確取代會先給 diff，`--apply` 才寫入 | ✅ 可用 |
 | `note add\|list` | 暫存筆記與來源清單，跨呼叫保留，方便最後引用 | ✅ 可用 |
+| `search <query>` | 網路搜尋：有 Tavily 金鑰就用 Tavily，否則用免金鑰的 DuckDuckGo（被擋時改用 Bing）；`--save N` 可把前幾筆直接存成 doc | ✅ 可用 |
+| `config set\|get\|unset\|path` | 管理設定（例如 Tavily API 金鑰），金鑰一律遮罩顯示 | ✅ 可用 |
 | `schema` | 輸出所有子命令的 function tool schema | ✅ 可用 |
 | `call <name> <json>` | 用 schema 名稱 + JSON 參數執行工具（給框架用） | ✅ 可用 |
-| `search <query>` | 網路搜尋 | 🚧 規劃中 |
 | `extract <doc>` | 從文件抽出連結、表格、數字、日期 | 🚧 規劃中 |
 | `table <source>` | CSV／表格的過濾、排序、加總 | 🚧 規劃中 |
 | `quote <symbol>` | 股價與歷史價格 | 🚧 規劃中 |
@@ -38,6 +39,63 @@
 | `report <title>` | 把筆記整理成附來源的 Markdown 報告 | 🚧 規劃中 |
 
 規劃中的子命令參數已經定好，呼叫時會回傳 `not_implemented`，並在 `hint` 裡給一個目前就能用的替代做法（例如改用 `fetch` 抓某個公開 API）。
+
+## 搜尋與 Tavily 金鑰
+
+`search` 支援三種後端，用 `--backend auto|tavily|ddg|bing` 指定，輸出的 `backend` 欄位會寫明實際用了哪一個：
+
+- **tavily**：搜尋品質最好，還能用 `--news`（只找新聞）、`--deep`（較深入，耗 2 點額度）、`--answer`（附一段摘要回答）。需要自備 [Tavily](https://tavily.com) API 金鑰。
+- **ddg**：DuckDuckGo HTML 版，不需金鑰。
+- **bing**：免金鑰的最後備援，從伺服器 IP 抓時結果常常不太相關，請自行確認。
+- **auto**（預設）：有設定金鑰就用 Tavily；沒有就用 DuckDuckGo，遇到機器人驗證頁時自動改用 Bing，並在輸出加上 `fallback_from` 與說明。用免金鑰後端時，`hint` 會提醒你設定 Tavily 金鑰可以得到更好的結果。
+
+常用選項：`--max-results N`（預設 5，上限 20）、`--site 網域`（可重複）、`--exclude-site 網域`、`--days N` 或 `--time day|week|month|year`、`--save N`（把前 N 筆存成 `doc:` handle，最多 5 筆；Tavily 會直接用它抓好的全文，其他後端則自動 `fetch` 該頁）。
+
+```bash
+agentbox search "EU AI Act general-purpose AI obligations" --site europa.eu --save 2
+agentbox search "Nvidia" --news --time week --answer
+agentbox search "open source Notion alternative" --exclude-site reddit.com --max-results 8
+```
+
+輸出範例（節錄）：
+
+```json
+{"ok":true,"data":{"backend":"tavily","query":"Who is the CEO of Nvidia","answer":"According to the sources, the CEO of Nvidia is Jensen Huang. ...",
+ "results":[{"rank":1,"title":"Jensen Huang - Wikipedia","url":"https://en.wikipedia.org/wiki/Jensen_Huang","snippet":"...","score":0.892,"doc":"doc:1"}, ...]},
+ "hint":"Saved results can be read with `agentbox read doc:N --grep KEYWORD`."}
+```
+
+### 設定 Tavily 金鑰
+
+金鑰的讀取順序是：環境變數 `TAVILY_API_KEY` 優先，其次是狀態目錄裡的 `config.toml`（`[tavily]` 區段的 `api_key`）。**刻意不提供命令列旗標**，因為旗標會出現在 agent 的對話紀錄和系統的程序清單裡。
+
+Linux / macOS（寫進 `~/.bashrc` 或 `~/.zshrc` 就會一直生效）：
+
+```bash
+export TAVILY_API_KEY="tvly-你的金鑰"
+```
+
+Windows PowerShell：
+
+```powershell
+# 只對目前視窗有效
+$env:TAVILY_API_KEY = "tvly-你的金鑰"
+# 永久寫入使用者環境變數（新開的視窗才會生效）
+[Environment]::SetEnvironmentVariable("TAVILY_API_KEY", "tvly-你的金鑰", "User")
+```
+
+或存進 agentbox 的設定檔。建議用 `-` 從標準輸入貼上，金鑰就不會留在 shell 歷史紀錄裡：
+
+```bash
+agentbox config set tavily.api_key -    # 貼上金鑰後按 Enter
+agentbox config get                      # 顯示來源與遮罩後的值，例如 "tvly-dev-****"，外加一組指紋方便辨識
+agentbox config path                     # 設定檔位置
+agentbox config unset tavily.api_key
+```
+
+設定檔在 Unix 上會以 0600 權限寫入。agentbox 的任何輸出、錯誤訊息和 hint 都不會印出金鑰本身；`config get` 只顯示前綴、長度和一組無法還原的短指紋。
+
+> ⚠️ **千萬不要把金鑰 commit 進版本庫。** 專案附了 `.env.example` 當範本；如果你用 direnv 或 dotenv 之類的工具，把它複製成 `.env` 再填值，`.env` 已列在 `.gitignore`。agentbox 本身不會讀 `.env`，只看環境變數和狀態目錄的設定檔。`config` 子命令也刻意不放進 `schema`，避免 agent 經手金鑰。
 
 ## 建置
 
@@ -86,6 +144,9 @@ cargo clippy --all-targets -- -D warnings
 一個「查某產品定價」的典型流程，模型每一步只需要下一個命令：
 
 ```bash
+$ agentbox search "Acme Pro plan pricing" --max-results 3
+{"ok":true,"data":{"backend":"tavily","query":"Acme Pro plan pricing","results":[{"rank":1,"title":"Pricing | Acme","url":"https://example.com/pricing","snippet":"..."}, ...]},"hint":"Open a result with `agentbox fetch URL`, ..."}
+
 $ agentbox fetch https://example.com/pricing
 {"ok":true,"data":{"doc":"doc:4","title":"Pricing","url":"https://example.com/pricing","chars":8123,"sections":6,
  "outline":[{"section":1,"heading":"Pricing","chars":420},{"section":2,"heading":"Pro","chars":1310}, ...]},

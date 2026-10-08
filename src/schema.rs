@@ -10,6 +10,8 @@ pub enum Kind {
     Str,
     Int,
     Bool,
+    /// Array of strings; becomes a repeated `--flag` on the CLI.
+    List,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -87,6 +89,17 @@ const fn flag(name: &'static str, desc: &'static str) -> Param {
         desc,
         default: None,
         choices: &[],
+    }
+}
+const fn pick(name: &'static str, choices: &'static [&'static str], desc: &'static str) -> Param {
+    Param {
+        name,
+        kind: Kind::Str,
+        required: false,
+        positional: false,
+        desc,
+        default: None,
+        choices,
     }
 }
 const fn choice(
@@ -197,13 +210,20 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "search",
         path: &["search"],
-        implemented: false,
-        desc: "Search the web and return titles, URLs and snippets.",
+        implemented: true,
+        desc: "Search the web. Returns ranked results (title, url, snippet) and which backend was used. Use save to store the top results as doc handles you can `read` directly.",
         params: &[
             pos("query", "Search query"),
-            dflt("limit", Kind::Int, "10", "Number of results"),
-            opt("site", Kind::Str, "Restrict to one domain, e.g. europa.eu"),
+            dflt("max_results", Kind::Int, "5", "Number of results, 1-20"),
+            opt("site", Kind::List, "Only these domains, e.g. [\"europa.eu\"]"),
+            opt("exclude_site", Kind::List, "Exclude these domains"),
             opt("days", Kind::Int, "Only results from the last N days"),
+            pick("time", &["day", "week", "month", "year"], "Only results from the last day/week/month/year"),
+            flag("news", "News sources only (best with Tavily)"),
+            flag("deep", "Deeper, more relevant search (Tavily, slower)"),
+            flag("answer", "Include a short generated answer (Tavily)"),
+            dflt("save", Kind::Int, "0", "Also store the top N results (max 5) as doc handles"),
+            pick("backend", &["auto", "tavily", "ddg", "bing"], "Search backend; auto uses Tavily when a key is configured"),
         ],
     },
     Spec {
@@ -280,8 +300,12 @@ pub fn tool_json(spec: &Spec) -> Value {
             Kind::Str => "string",
             Kind::Int => "integer",
             Kind::Bool => "boolean",
+            Kind::List => "array",
         };
         let mut prop = json!({ "type": ty, "description": p.desc });
+        if p.kind == Kind::List {
+            prop["items"] = json!({ "type": "string" });
+        }
         if !p.choices.is_empty() {
             prop["enum"] = json!(p.choices);
         }
@@ -289,7 +313,7 @@ pub fn tool_json(spec: &Spec) -> Value {
             prop["default"] = match p.kind {
                 Kind::Int => json!(d.parse::<i64>().unwrap_or(0)),
                 Kind::Bool => json!(d == "true"),
-                Kind::Str => json!(d),
+                Kind::Str | Kind::List => json!(d),
             };
         }
         props.insert(p.name.to_string(), prop);
@@ -382,6 +406,23 @@ pub fn to_argv(name: &str, args: &Value) -> Result<Vec<String>, AppError> {
             Some(v) => v,
         };
         let text = match (p.kind, v) {
+            (Kind::List, Value::Array(items)) => {
+                for it in items {
+                    let Some(s) = it.as_str() else {
+                        return Err(AppError::new(
+                            "bad_args",
+                            format!("parameter `{}` must be an array of strings", p.name),
+                            format!(r#"Example: "{}": ["example.com"]"#, p.name),
+                        ));
+                    };
+                    argv.push(format!("--{}={s}", p.name.replace('_', "-")));
+                }
+                continue;
+            }
+            (Kind::List, Value::String(s)) => {
+                argv.push(format!("--{}={s}", p.name.replace('_', "-")));
+                continue;
+            }
             (Kind::Bool, Value::Bool(b)) => {
                 if *b {
                     argv.push(format!("--{}", p.name.replace('_', "-")));
@@ -427,6 +468,7 @@ mod tests {
         match p.kind {
             Kind::Bool => json!(true),
             Kind::Int => json!(3),
+            Kind::List => json!(["a.test", "-b.test"]),
             Kind::Str if !p.choices.is_empty() => json!(p.choices[0]),
             Kind::Str => json!("-sample value"),
         }
@@ -458,7 +500,9 @@ mod tests {
         let mut leaves = Vec::new();
         for sc in root.get_subcommands() {
             let name = sc.get_name().to_string();
-            if name == "schema" || name == "call" {
+            // Meta commands are not agent tools; config is kept away from
+            // agents on purpose so API keys never pass through transcripts.
+            if name == "schema" || name == "call" || name == "config" {
                 continue;
             }
             if sc.has_subcommands() {

@@ -5,3 +5,10 @@
 .DS_Store
 .idea/
 .vscode/
+
+# Secrets: never commit API keys
+.env
+.env.*
+!.env.example
+.agentbox/
+config.toml

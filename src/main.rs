@@ -2,14 +2,18 @@
 
 mod cli;
 mod cmd;
+mod config;
+mod dom;
 mod envelope;
 mod markdown;
 mod render;
 mod schema;
 mod state;
+#[cfg(test)]
+mod testutil;
 
 use clap::Parser;
-use cli::{Cli, Cmd, FileCmd, Format, NoteCmd};
+use cli::{Cli, Cmd, ConfigCmd, FileCmd, Format, NoteCmd};
 use envelope::{envelope, AppError, CmdResult};
 use state::Store;
 use std::io::{Read, Write};
@@ -138,7 +142,48 @@ fn dispatch(cmd: Cmd, store: &Store) -> CmdResult {
         Cmd::Note(NoteCmd::List { tag, grep, limit }) => {
             cmd::note::list(store, tag.as_deref(), grep.as_deref(), limit)
         }
-        Cmd::Search { .. } => cmd::stubs::not_implemented("search"),
+        Cmd::Search {
+            query,
+            max_results,
+            site,
+            exclude_site,
+            days,
+            time,
+            news,
+            deep,
+            answer,
+            save,
+            backend,
+        } => {
+            let key = config::resolve(store, "tavily.api_key", config::env_for("tavily.api_key"))
+                .map(|(k, _)| k);
+            let backend = backend
+                .or_else(|| config::read_value(&config::path(store), "search.backend"))
+                .unwrap_or_else(|| "auto".into());
+            let args = cmd::search::SearchArgs {
+                query,
+                max_results,
+                sites: site,
+                exclude_sites: exclude_site,
+                days,
+                time,
+                news,
+                deep,
+                answer,
+                save,
+                backend,
+            };
+            cmd::search::run(
+                store,
+                &args,
+                key.as_deref(),
+                &cmd::search::Endpoints::from_env(),
+            )
+        }
+        Cmd::Config(ConfigCmd::Set { key, value }) => config::set(store, &key, value.as_deref()),
+        Cmd::Config(ConfigCmd::Get { key }) => config::get(store, key.as_deref(), &config::env_for),
+        Cmd::Config(ConfigCmd::Unset { key }) => config::unset(store, &key),
+        Cmd::Config(ConfigCmd::Path) => config::show_path(store),
         Cmd::Extract { .. } => cmd::stubs::not_implemented("extract"),
         Cmd::Table { .. } => cmd::stubs::not_implemented("table"),
         Cmd::Quote { .. } => cmd::stubs::not_implemented("quote"),
@@ -181,10 +226,13 @@ fn call(name: &str, raw: &str, store: &Store) -> CmdResult {
             "Check the argument values against `agentbox schema`.",
         )
     })?;
-    if matches!(cli.cmd, Cmd::Call { .. } | Cmd::Schema { .. }) {
+    if matches!(
+        cli.cmd,
+        Cmd::Call { .. } | Cmd::Schema { .. } | Cmd::Config(_)
+    ) {
         return Err(AppError::new(
             "bad_args",
-            "call cannot run call or schema",
+            "call cannot run call, schema or config",
             "Call a regular tool name.",
         ));
     }

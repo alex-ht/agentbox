@@ -96,20 +96,43 @@ pub enum Cmd {
     #[command(subcommand)]
     Note(NoteCmd),
 
-    /// [planned] Web search returning titles, URLs and snippets
-    #[command(after_help = "Example:\n  agentbox search \"EU AI Act obligations\" --limit 5")]
+    /// Web search (Tavily with your API key, else keyless DuckDuckGo/Bing)
+    #[command(
+        after_help = "Examples:\n  agentbox search \"EU AI Act GPAI obligations\" --site europa.eu --save 2\n  agentbox search \"Nvidia earnings\" --news --time week --answer\n\nTavily key: env TAVILY_API_KEY or `agentbox config set tavily.api_key -` (never a flag)."
+    )]
     Search {
         /// Search query
         query: String,
-        /// Number of results
-        #[arg(long, default_value_t = 10)]
-        limit: u32,
-        /// Restrict to one domain, e.g. europa.eu
+        /// Number of results (max 20)
+        #[arg(long, default_value_t = 5)]
+        max_results: usize,
+        /// Only this domain, e.g. europa.eu (repeatable)
         #[arg(long)]
-        site: Option<String>,
+        site: Vec<String>,
+        /// Exclude this domain (repeatable)
+        #[arg(long)]
+        exclude_site: Vec<String>,
         /// Only results from the last N days
         #[arg(long)]
         days: Option<u32>,
+        /// Only results from the last day, week, month or year
+        #[arg(long, value_parser = ["day", "week", "month", "year"])]
+        time: Option<String>,
+        /// News sources only (Tavily)
+        #[arg(long)]
+        news: bool,
+        /// Deeper, more relevant search; costs 2 credits (Tavily)
+        #[arg(long)]
+        deep: bool,
+        /// Include a short generated answer (Tavily)
+        #[arg(long)]
+        answer: bool,
+        /// Also store the top N results as doc handles (max 5)
+        #[arg(long, default_value_t = 0)]
+        save: usize,
+        /// Backend; default auto = tavily if a key is set, else ddg (bing fallback)
+        #[arg(long, value_parser = ["auto", "tavily", "ddg", "bing"])]
+        backend: Option<String>,
     },
 
     /// [planned] Pull links, tables, numbers or dates out of a doc
@@ -192,6 +215,10 @@ pub enum Cmd {
         #[arg(long)]
         apply: bool,
     },
+
+    /// Settings such as the Tavily API key (stored in the state dir)
+    #[command(subcommand)]
+    Config(ConfigCmd),
 
     /// Print OpenAI-style function-tool JSON schemas for all subcommands
     #[command(after_help = "Examples:\n  agentbox schema\n  agentbox schema --implemented-only")]
@@ -298,4 +325,34 @@ pub enum NoteCmd {
         #[arg(long, default_value_t = 50)]
         limit: usize,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigCmd {
+    /// Store a setting; use `-` (or omit the value) to read it from stdin
+    #[command(
+        after_help = "Examples:\n  agentbox config set tavily.api_key -      (then paste the key, press Enter)\n  agentbox config set search.backend bing\n\nKeys: tavily.api_key, search.backend. Env TAVILY_API_KEY overrides the file."
+    )]
+    Set {
+        /// Setting name, e.g. tavily.api_key
+        key: String,
+        /// Value; `-` or omitted reads one line from stdin
+        value: Option<String>,
+    },
+    /// Show settings and where they come from (secrets are masked)
+    #[command(
+        after_help = "Examples:\n  agentbox config get\n  agentbox config get tavily.api_key"
+    )]
+    Get {
+        /// Setting name; omit to show all
+        key: Option<String>,
+    },
+    /// Remove a setting from the config file
+    #[command(after_help = "Example:\n  agentbox config unset tavily.api_key")]
+    Unset {
+        /// Setting name
+        key: String,
+    },
+    /// Print the config file path
+    Path,
 }
