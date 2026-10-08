@@ -202,10 +202,11 @@ pub const SPECS: &[Spec] = &[
         name: "file_replace",
         path: &["file", "replace"],
         implemented: true,
-        desc: "Replace exact text in a file. The find text must occur exactly once unless all=true. Without apply=true it only returns a diff preview.",
+        desc: "Replace exact text in a file, or a report placeholder by number (todo=2 replaces the whole <!-- TODO(2): ... --> comment). Give find or todo. The find text must occur exactly once unless all=true. Without apply=true it only returns a diff preview.",
         params: &[
             pos("path", "File path"),
-            req("find", "Exact text to find, including whitespace"),
+            opt("find", Kind::Str, "Exact text to find, including whitespace"),
+            opt("todo", Kind::Int, "Number N of a <!-- TODO(N): ... --> placeholder to replace (instead of find)"),
             req("replace", "Replacement text"),
             flag("all", "Replace every occurrence"),
             flag("apply", "Actually write the file"),
@@ -231,6 +232,16 @@ pub const SPECS: &[Spec] = &[
             opt("tag", Kind::Str, "Only notes with this tag"),
             opt("grep", Kind::Str, "Only notes containing this keyword"),
             dflt("limit", Kind::Int, "50", "Maximum notes to return (latest kept)"),
+        ],
+    },
+    Spec {
+        name: "note_clear",
+        path: &["note", "clear"],
+        implemented: true,
+        desc: "Delete saved notes (all, or only one tag), e.g. leftovers from an earlier task. Without apply=true it only reports how many would be removed.",
+        params: &[
+            opt("tag", Kind::Str, "Only notes with this tag"),
+            flag("apply", "Actually delete the notes"),
         ],
     },
     Spec {
@@ -393,10 +404,10 @@ pub const SPECS: &[Spec] = &[
         name: "report_build",
         path: &["report", "build"],
         implemented: true,
-        desc: "Draft a Markdown report skeleton from a template: exact headings and numbering, <!-- TODO(n) --> placeholders, your notes with citations, and a Sources section. Fill TODOs with file_replace, then run report_check.",
+        desc: "Draft a Markdown report skeleton from a template: exact headings and numbering, <!-- TODO(n) --> placeholders, your notes with citations, and a Sources section. Fill each TODO with file_replace (todo=N), then run report_check.",
         params: &[
             pos("title", "Report title (the H1)"),
-            dflt("template", Kind::Str, "brief", "Template: brief, compare, top-n, exec-lookup, a user template name, or a .toml path"),
+            dflt("template", Kind::Str, "brief", "Template: brief, compare, top-n, exec-lookup, market-brief, a user template name, or a .toml path"),
             opt("n", Kind::Int, "Number of numbered items for templates like top-n"),
             opt("columns", Kind::Str, "Comma-separated table columns for templates like compare"),
             opt("tag", Kind::Str, "Only use notes with this tag"),
@@ -620,11 +631,30 @@ mod tests {
     }
 
     #[test]
+    fn file_replace_by_todo_number() {
+        let argv = to_argv(
+            "file_replace",
+            &json!({"path": "r.md", "todo": 2, "replace": "Axum", "apply": true}),
+        )
+        .unwrap();
+        let full = std::iter::once("agentbox".to_string()).chain(argv);
+        assert!(Cli::try_parse_from(full).is_ok());
+        let none = to_argv("file_replace", &json!({"path": "r.md", "replace": "x"})).unwrap();
+        let full = std::iter::once("agentbox".to_string()).chain(none);
+        assert!(
+            Cli::try_parse_from(full).is_err(),
+            "find or todo is required"
+        );
+    }
+
+    #[test]
     fn every_spec_parses_through_clap() {
         for spec in SPECS {
+            // `find` and `todo` are alternatives; `todo` is tested below.
             let args: Map<String, Value> = spec
                 .params
                 .iter()
+                .filter(|p| !(spec.name == "file_replace" && p.name == "todo"))
                 .map(|p| (p.name.to_string(), sample(p)))
                 .collect();
             let argv = to_argv(spec.name, &Value::Object(args)).unwrap();
@@ -657,7 +687,7 @@ mod tests {
             let name = sc.get_name().to_string();
             // Meta commands are not agent tools; config is kept away from
             // agents on purpose so API keys never pass through transcripts.
-            if name == "schema" || name == "call" || name == "config" {
+            if matches!(name.as_str(), "schema" | "call" | "config" | "skill") {
                 continue;
             }
             collect_leaves(&name, sc, &mut leaves);

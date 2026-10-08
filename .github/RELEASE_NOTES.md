@@ -38,6 +38,10 @@ Move-Item -Force "agentbox-$v-x86_64-pc-windows-msvc\agentbox.exe" $dir
 
 Windows 執行檔已靜態連結 C 執行階段，不需要另外安裝 VC++ 可轉散發套件。下載後可用文末的 SHA256 驗證（Linux：`sha256sum -c SHA256SUMS.txt --ignore-missing`；PowerShell：`Get-FileHash agentbox.zip`）。
 
+### 安裝 Agent Skill（選用）
+
+壓縮檔裡的 `skills/agentbox/` 是給 agent 看的使用說明（agentskills.io 格式）。執行 `agentbox skill install --apply` 會裝到 `~/.agents/skills/agentbox`；OpenClaw workspace 請用 `agentbox skill install --dir <workspace>/skills --apply`，或直接複製資料夾。
+
 ### 設定 Tavily 金鑰（選用）
 
 沒有金鑰也能搜尋（改用 DuckDuckGo／Bing）。有 Tavily 金鑰時，用環境變數或從標準輸入存進設定檔；agentbox 刻意不提供金鑰的命令列旗標，任何輸出也只會顯示遮罩後的值。

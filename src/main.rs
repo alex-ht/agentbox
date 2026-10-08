@@ -13,6 +13,7 @@ mod quote;
 mod render;
 mod report;
 mod schema;
+mod skill;
 mod state;
 mod table;
 #[cfg(test)]
@@ -20,8 +21,8 @@ mod testutil;
 
 use clap::Parser;
 use cli::{
-    Cli, Cmd, ConfigCmd, FileCmd, Format, MarketCmd, NoteCmd, QuoteCmd, ReportCmd, TableCmd,
-    TemplateCmd,
+    Cli, Cmd, ConfigCmd, FileCmd, Format, MarketCmd, NoteCmd, QuoteCmd, ReportCmd, SkillCmd,
+    TableCmd, TemplateCmd,
 };
 use envelope::{envelope, AppError, CmdResult};
 use state::Store;
@@ -143,20 +144,36 @@ fn dispatch(cmd: Cmd, store: &Store) -> CmdResult {
             path,
             content,
             apply,
-        }) => cmd::file::write(&path, &content, apply),
+        }) => cmd::file::write(&path, &stdin_if_dash(content, "--content")?, apply),
         Cmd::File(FileCmd::Replace {
             path,
             find,
+            todo,
             replace,
             all,
             apply,
-        }) => cmd::file::replace(&path, &find, &replace, all, apply),
+        }) => {
+            let find = match (find, todo) {
+                (_, Some(n)) => cmd::file::todo_marker(&path, n)?,
+                (Some(f), None) => f,
+                (None, None) => {
+                    return Err(AppError::new(
+                        "bad_args",
+                        "give --find TEXT or --todo N",
+                        "Use --todo N for a report placeholder, or --find with the exact text.",
+                    ))
+                }
+            };
+            let replace = stdin_if_dash(replace, "--replace")?;
+            cmd::file::replace(&path, &find, &replace, all, apply)
+        }
         Cmd::Note(NoteCmd::Add { text, source, tag }) => {
             cmd::note::add(store, &text.join(" "), source.as_deref(), tag.as_deref())
         }
         Cmd::Note(NoteCmd::List { tag, grep, limit }) => {
             cmd::note::list(store, tag.as_deref(), grep.as_deref(), limit)
         }
+        Cmd::Note(NoteCmd::Clear { tag, apply }) => cmd::note::clear(store, tag.as_deref(), apply),
         Cmd::Search {
             query,
             max_results,
@@ -365,9 +382,33 @@ fn dispatch(cmd: Cmd, store: &Store) -> CmdResult {
         Cmd::Report(ReportCmd::Template(TemplateCmd::Show { name })) => {
             report::template::show(store, &name)
         }
+        Cmd::Skill(SkillCmd::Install { dir, apply }) => skill::install(dir.as_deref(), apply),
         Cmd::Schema { implemented_only } => schema::run_schema(implemented_only),
         Cmd::Call { name, args } => call(&name, &args, store),
     }
+}
+
+/// A text argument of exactly `-` means "read it from stdin" (heredoc-friendly:
+/// no shell quoting of `$`, quotes or newlines). One trailing newline is dropped.
+fn stdin_if_dash(value: String, flag: &str) -> Result<String, AppError> {
+    if value != "-" {
+        return Ok(value);
+    }
+    let mut s = String::new();
+    std::io::stdin().read_to_string(&mut s).map_err(|e| {
+        AppError::new(
+            "bad_args",
+            format!("reading {flag} from stdin: {e}"),
+            "Pipe the text into stdin, e.g. with a heredoc: <<'EOF' ... EOF.",
+        )
+    })?;
+    if s.ends_with('\n') {
+        s.pop();
+        if s.ends_with('\r') {
+            s.pop();
+        }
+    }
+    Ok(s)
 }
 
 /// `call <name> <json>`: map a function-tool call onto the regular CLI.
@@ -404,11 +445,11 @@ fn call(name: &str, raw: &str, store: &Store) -> CmdResult {
     })?;
     if matches!(
         cli.cmd,
-        Cmd::Call { .. } | Cmd::Schema { .. } | Cmd::Config(_)
+        Cmd::Call { .. } | Cmd::Schema { .. } | Cmd::Config(_) | Cmd::Skill(_)
     ) {
         return Err(AppError::new(
             "bad_args",
-            "call cannot run call, schema or config",
+            "call cannot run call, schema, config or skill",
             "Call a regular tool name.",
         ));
     }

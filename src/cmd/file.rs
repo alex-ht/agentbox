@@ -63,6 +63,47 @@ pub fn write(path: &str, content: &str, apply: bool) -> CmdResult {
     change(path, &old, content, exists, apply, json!({}))
 }
 
+/// Find the full `<!-- TODO(n): ... -->` placeholder written by `report build`.
+pub fn todo_marker(path: &str, n: usize) -> Result<String, AppError> {
+    let text = read_text(path)?;
+    let open = format!("<!-- TODO({n})");
+    if let Some(start) = text.find(&open) {
+        let end = text[start..]
+            .find("-->")
+            .map(|e| start + e + 3)
+            .unwrap_or_else(|| text[start..].find('\n').map_or(text.len(), |e| start + e));
+        return Ok(text[start..end].to_string());
+    }
+    let left = todo_numbers(&text);
+    let hint = if left.is_empty() {
+        format!("No TODO placeholders are left in {path}. Run `agentbox report check {path}` to see what else is missing.")
+    } else {
+        let list: Vec<String> = left.iter().map(|n| n.to_string()).collect();
+        format!(
+            "TODOs left in {path}: {}. Use one of these numbers with --todo.",
+            list.join(", ")
+        )
+    };
+    Err(AppError::new(
+        "todo_not_found",
+        format!("no <!-- TODO({n}) --> placeholder in {path}"),
+        hint,
+    ))
+}
+
+fn todo_numbers(text: &str) -> Vec<usize> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some(i) = rest.find("<!-- TODO(") {
+        rest = &rest[i + 10..];
+        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if let Ok(n) = digits.parse() {
+            out.push(n);
+        }
+    }
+    out
+}
+
 pub fn replace(path: &str, find: &str, replacement: &str, all: bool, apply: bool) -> CmdResult {
     if find.is_empty() {
         return Err(AppError::new(
@@ -309,6 +350,29 @@ mod tests {
         assert_eq!(fs::read_to_string(&p).unwrap(), "hello\n");
         let out = write(&p, "hello\n", true).unwrap();
         assert!(out.hint.unwrap().contains("No changes"));
+    }
+
+    #[test]
+    fn todo_marker_finds_whole_placeholder() {
+        let (_d, p) = tmp_file(
+            "# T\n\n## 1. <!-- TODO(1): item title -->\n\n<!-- TODO(2): Write 2-4 sentences. -->\n",
+        );
+        assert_eq!(
+            todo_marker(&p, 2).unwrap(),
+            "<!-- TODO(2): Write 2-4 sentences. -->"
+        );
+        let out = replace(&p, &todo_marker(&p, 1).unwrap(), "Axum", false, true).unwrap();
+        assert_eq!(out.data["replacements"], 1);
+        assert!(std::fs::read_to_string(&p)
+            .unwrap()
+            .contains("## 1. Axum\n"));
+        let e = todo_marker(&p, 7).unwrap_err();
+        assert_eq!(e.code, "todo_not_found");
+        assert!(
+            e.hint.contains("TODOs left") && e.hint.contains(": 2."),
+            "{}",
+            e.hint
+        );
     }
 
     #[test]

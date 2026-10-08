@@ -91,7 +91,7 @@ $AGENTBOX_HOME（預設 ~/.agentbox 或 %USERPROFILE%\.agentbox）
 
 ### build 的慣例
 
-- TODO 一律是 `<!-- TODO(k): 說明 -->`，k 在整份文件中唯一，`file replace --find` 永遠只會命中一處。說明文字來自段落的 `hint`，並附上字數要求與引用格式範例。
+- TODO 一律是 `<!-- TODO(k): 說明 -->`，k 在整份文件中唯一，填完一個不會讓其他 TODO 重新編號。`file replace --todo k` 會找到整段註解並取代，模型不必複製很長的標記；`report check` 的修正命令也用這個寫法。說明文字來自段落的 `hint`，並附上字數要求與引用格式範例。
 - 筆記分配：tag 是 `item2`、`item-2` 或 `2` 時放進第 2 個編號項目；否則 tag 符合段落 `keywords` 或標題中長度 ≥ 4 的字時放進該段。分不到的筆記放進 Sources 前的 `<!-- NOTES ... -->` 註解區塊，提醒模型搬移後刪除（`check` 會對殘留的區塊發警告）。
 - 引用依範本的 `citation_style` 產生，Sources 段落列出筆記來源（有 fetch 過的文件會用它的標題）；來源不足 `min_sources` 時加一個 TODO，並列出已 fetch 但還沒用到的文件當候選。
 - 輸出含 `outline`（行號、層級、標題）與 `todos` 數量，模型不用重讀整份檔案就知道結構。
@@ -155,3 +155,11 @@ htmd 預設會把 `<table>` 攤平成文字。`fetch` 註冊了自己的 table h
 - **輸入解析**：`market get`／`history` 接受 slug、數字 id 或 polymarket.com 網址（`/event/<e>`、`/event/<e>/<m>`、`/market/<m>`）。`get` 先找活動再找市場；`history` 給數字 id 或市場 slug 時先找市場。活動只有一個市場（或只有一個還沒結算）時直接用它，否則回 `ambiguous_market` 並列出前幾個市場的 slug。
 - **走勢**：使用市場第一個結果（通常是 Yes）的 token。CLOB 對 `1w`、`1m` 有最小 fidelity 限制，所以固定用 1d → 60 分、1w → 360 分、1m 與 max → 1440 分。輸出最近 40 個點與完整摘要（起訖、百分點變化、高低點與時間，時間一律 UTC）；`--save` 存全部點，欄位為 `time` 與 `<outcome>_pct`。
 - **錯誤**：DNS 失敗是 `dns_error`，其他連線失敗是 `network_error`，兩者的 hint 都提醒 RPZ 類 DNS 過濾可能擋了 polymarket.com，並附 `nslookup` 的比對方法（被 sinkhole 的網域通常會在 TLS 交握時失敗，而不是查不到 DNS）。
+
+## 12. Agent Skill
+
+- `skills/agentbox/` 是符合 agentskills.io 規格的 skill：`SKILL.md`（frontmatter 的 `name` 與資料夾同名、`description` 不超過 1024 字元並寫明何時不要用、`compatibility` 說明需要 PATH 上的執行檔與網路）加上 `references/`、`assets/`。OpenClaw 的 gating 寫在 `metadata.openclaw`（`requires.bins: [agentbox]`、`os`）。
+- 讀者是 26B 以下的小模型，所以 `SKILL.md` 控制在 250 行、約 5k token 以內，只放流程、速查表、輸出欄位、硬性規則與完成條件；細節拆到 `references/`，並在 `SKILL.md` 用一張表說明什麼情況開哪個檔案。
+- 防止脫節：`src/skill.rs` 的測試會抽出所有 Markdown 程式碼區塊與行內程式碼裡的 `agentbox ...` 命令（處理引號、註解、管線、重新導向與 heredoc），用 `Cli::try_parse_from` 解析；禁止 `doc:N`、`...`、`<...>` 之類的佔位符，也禁止在雙引號裡寫 `$`（shell 會把 `$20` 展開成空字串，這正是要教模型避免的錯誤）。另外檢查 `SKILL.md` 提到每個給 agent 用的子命令、提到的參考檔都存在、資料夾裡的檔案都有嵌入執行檔、範本範例能解析。
+- `agentbox skill install` 用 `include_str!` 把同一份檔案編進執行檔，預設寫到 `~/.agents/skills/agentbox`（OpenClaw 與其他支援 Agent Skills 的工具都會讀），`--dir` 可指定其他 skills 根目錄。和其他寫入命令一樣先預覽，`--apply` 才寫；內容相同的檔案標為 `unchanged`。`skill` 與 `config` 一樣不放進 `schema`，`call` 也不能呼叫。
+- 為了讓小模型少犯 shell 錯誤，`file write --content -`、`file replace --replace -` 會從標準輸入讀內容（去掉結尾一個換行），搭配 `<<'EOF'` heredoc 就不必處理 `$`、引號與換行；`note clear` 讓同一個狀態目錄跑多個任務時，舊筆記不會混進新報告。

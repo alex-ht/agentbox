@@ -1,4 +1,4 @@
-//! `note add|list`: scratch notes and a running source list in the state dir.
+//! `note add|list|clear`: scratch notes and a running source list in the state dir.
 
 use crate::envelope::{AppError, CmdResult, Output};
 use crate::state::Store;
@@ -130,9 +130,75 @@ pub fn list(store: &Store, tag: Option<&str>, grep: Option<&str>, limit: usize) 
     })
 }
 
+/// Remove all notes, or only those with `tag`. Preview unless `apply`.
+pub fn clear(store: &Store, tag: Option<&str>, apply: bool) -> CmdResult {
+    let all = load(store);
+    let hit = |n: &Note| {
+        tag.is_none_or(|t| {
+            n.tag
+                .as_deref()
+                .is_some_and(|nt| nt.eq_ignore_ascii_case(t))
+        })
+    };
+    let (removed, kept): (Vec<Note>, Vec<Note>) = all.into_iter().partition(hit);
+    if apply && !removed.is_empty() {
+        let path = store.notes_path();
+        if kept.is_empty() {
+            fs::remove_file(&path).map_err(|e| AppError::io("remove notes", e))?;
+        } else {
+            let body: String = kept
+                .iter()
+                .map(|n| serde_json::to_string(n).expect("Note serializes") + "\n")
+                .collect();
+            fs::write(&path, body).map_err(|e| AppError::io("write notes", e))?;
+        }
+    }
+    let n = removed.len();
+    let hint = if n == 0 {
+        "Nothing to remove.".to_string()
+    } else if apply {
+        format!("Removed {n} note(s). Add new ones with `agentbox note add \"fact\" --source URL --tag item1`.")
+    } else {
+        format!("Preview only: {n} note(s) would be removed. Rerun the same command with --apply.")
+    };
+    Ok(Output::new(json!({
+        "applied": apply && n > 0,
+        "tag": tag,
+        "removed": n,
+        "kept": kept.len(),
+    }))
+    .hint(hint))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clear_previews_then_removes() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().join("state"));
+        add(&store, "a", None, Some("old")).unwrap();
+        add(&store, "b", None, Some("item1")).unwrap();
+        let p = clear(&store, Some("OLD"), false).unwrap();
+        assert_eq!(
+            (p.data["removed"].clone(), p.data["applied"].clone()),
+            (json!(1), json!(false))
+        );
+        assert_eq!(load(&store).len(), 2);
+        clear(&store, Some("old"), true).unwrap();
+        assert_eq!(
+            load(&store)
+                .iter()
+                .map(|n| n.text.as_str())
+                .collect::<Vec<_>>(),
+            ["b"]
+        );
+        let r = clear(&store, None, true).unwrap();
+        assert_eq!(r.data["removed"], 1);
+        assert!(load(&store).is_empty());
+        assert_eq!(clear(&store, None, true).unwrap().data["applied"], false);
+    }
 
     #[test]
     fn add_list_filter() {

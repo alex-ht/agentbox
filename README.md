@@ -26,19 +26,20 @@
 | `read <doc>` | 依 `--section N`、`--grep 關鍵字` 或 `--offset` 讀取文件，超過 `--max-chars` 會截斷並告訴你怎麼接著讀 | ✅ 可用 |
 | `calc <expr>` | 四則運算、次方、`round(x,2)`、`min/max/sum/avg` 等 | ✅ 可用 |
 | `now [--tz]` | 目前時間（ISO 8601）、星期、UTC 偏移，可指定時區 | ✅ 可用 |
-| `file read\|write\|replace` | 讀取文字檔（可指定行範圍）；寫入與精確取代會先給 diff，`--apply` 才寫入 | ✅ 可用 |
-| `note add\|list` | 暫存筆記與來源清單，跨呼叫保留，方便最後引用 | ✅ 可用 |
+| `file read\|write\|replace` | 讀取文字檔（可指定行範圍）；寫入與精確取代會先給 diff，`--apply` 才寫入；`--todo N` 直接取代報告骨架的第 N 個 TODO，`--content -`／`--replace -` 從標準輸入讀內容 | ✅ 可用 |
+| `note add\|list\|clear` | 暫存筆記與來源清單，跨呼叫保留，方便最後引用；`clear` 在開始新任務前清掉舊筆記（同樣要 `--apply`） | ✅ 可用 |
 | `report build\|check\|templates\|template show` | 依範本產生報告骨架（標題、編號、TODO、筆記與引用、Sources）；檢查報告結構並給出可直接執行的修正命令 | ✅ 可用 |
 | `search <query>` | 網路搜尋：有 Tavily 金鑰就用 Tavily，否則用免金鑰的 DuckDuckGo（被擋時改用 Bing）；`--save N` 可把前幾筆直接存成 doc | ✅ 可用 |
 | `config set\|get\|unset\|path` | 管理設定（例如 Tavily、Stooq API 金鑰），金鑰一律遮罩顯示 | ✅ 可用 |
 | `schema` | 輸出所有子命令的 function tool schema | ✅ 可用 |
 | `call <name> <json>` | 用 schema 名稱 + JSON 參數執行工具（給框架用） | ✅ 可用 |
+| `skill install` | 把內建的 Agent Skill（教模型怎麼用 agentbox 的說明檔）複製到 skills 目錄 | ✅ 可用 |
 | `extract <doc...> --kind K` | 從一或多份文件抽出表格、價格、日期、人名職稱、連結、數字、email，每筆附來源；`--save-table` 存成 `tbl:N` | ✅ 可用 |
 | `table show\|query\|import\|export` | `tbl:N` 或 CSV／TSV／JSON／Markdown 表格的檢視、過濾、排序、分組加總與匯出，不用寫程式 | ✅ 可用 |
 | `quote get\|history\|search` | 股票、指數、匯率、加密貨幣的即時報價、歷史價格與代號查詢（Yahoo，免金鑰；Stooq 備援） | ✅ 可用 |
 | `market search\|get\|trending\|history` | Polymarket 預測市場：關鍵字搜尋、熱門、單一活動細節與機率走勢（唯讀，免金鑰） | ✅ 可用 |
 
-所有子命令都已實作，`agentbox schema --implemented-only` 會列出全部 26 個工具。
+所有子命令都已實作，`agentbox schema --implemented-only` 會列出全部 27 個工具（`config`、`skill`、`schema`、`call` 是給人用的，不算在內）。
 
 ## 搜尋與 Tavily 金鑰
 
@@ -101,7 +102,7 @@ agentbox config unset tavily.api_key
 
 很多評分器對報告格式非常挑剔：題目要求 `## 1.`，你寫成 `### 1.` 就算錯；少一個項目、少了 Sources 段落、某段沒附來源，也都會扣分。小模型最常在這種地方翻車，所以 agentbox 把「格式」交給範本處理：
 
-- `report build`：依範本產生骨架。標題層級和編號一字不差，需要模型填的地方都是 `<!-- TODO(k): ... -->`（k 不重複，方便用 `file replace` 精確取代），筆記會依 tag 放進對應段落並附上引用，最後列出 Sources。預設只預覽，加 `--apply` 才寫檔。
+- `report build`：依範本產生骨架。標題層級和編號一字不差，需要模型填的地方都是 `<!-- TODO(k): ... -->`（k 不重複，用 `file replace report.md --todo k --replace "內容" --apply` 就能整段取代，不必複製整個註解），筆記會依 tag 放進對應段落並附上引用，最後列出 Sources。預設只預覽，加 `--apply` 才寫檔。
 - `report check`：唯讀，不改檔。回傳 `{pass, score, issues, stats}`，每個問題都有行號和**具體**的修正方式；標題層級、編號這類問題直接給一行可執行的 `agentbox file replace ... --apply`。
 - `report templates` 列出所有範本，`report template show <名稱>` 印出範本的 TOML。
 
@@ -166,7 +167,7 @@ agentbox note add "Rocket 0.5 focuses on developer experience" --source https://
 agentbox report build "Top 3 Rust Web Frameworks in 2026" --template top-n --n 3 --out report.md --apply
 
 # 4. 逐一填 TODO
-agentbox file replace report.md --find "<!-- TODO(1): item title -->" --replace "Axum" --apply
+agentbox file replace report.md --todo 1 --replace "Axum" --apply
 
 # 5. 檢查
 agentbox report check report.md --template top-n --n 3 --format md
@@ -353,11 +354,31 @@ agentbox note add "Democrats Sweep trades at 63.5%" --source https://polymarket.
 
 # 4. 產生骨架、填 TODO、檢查
 agentbox report build "Polymarket politics brief" --template market-brief --n 3 --out brief.md --apply
-agentbox file replace brief.md --find "<!-- TODO(2): item title -->" --replace "Balance of Power: 2026 Midterms" --apply
+agentbox file replace brief.md --todo 2 --replace "Balance of Power: 2026 Midterms" --apply
 agentbox report check brief.md --template market-brief --n 3 --format md
 ```
 
 想用一般的編號清單也可以：把第 4 步的範本換成 `--template top-n --n 3`，只是不會檢查 `%` 與 polymarket.com 連結。
+
+## 給 agent 用的 Skill
+
+光有執行檔，模型不會知道該怎麼用。專案附了一份符合 [Agent Skills](https://agentskills.io/specification) 格式的說明（英文，寫給小模型看），放在 [`skills/agentbox/`](skills/agentbox/)：
+
+- `SKILL.md`：何時使用、怎麼讀 `ok`／`data`／`hint`、標準研究流程（search → read → note → extract／table → report build → file replace → report check）、每個子命令一行的速查表、硬性規則與完成條件。刻意控制在 200 行以內，小模型的 context 才放得下。
+- `references/`：需要時才讀的細節，包括搜尋技巧、抽取與表格語法、報告範本與修正方式、股價與 Polymarket、檔案編輯（含 heredoc 寫法），以及常見任務的做法（股價簡報、高階主管查詢、定價比較、Polymarket 簡報、歐盟法規、開源替代方案、IT 採購等）。
+- `assets/vendor-shortlist.toml`：自訂報告範本的範例。
+
+安裝方式（`agentbox` 執行檔必須已經在 PATH 上）：
+
+```bash
+agentbox skill install                 # 預覽：列出會寫入 ~/.agents/skills/agentbox/ 的檔案
+agentbox skill install --apply         # 寫入；Windows 是 %USERPROFILE%\.agents\skills\agentbox
+agentbox skill install --dir ~/my-openclaw-workspace/skills --apply   # 指定 OpenClaw workspace 的 skills 目錄
+```
+
+也可以直接複製資料夾：把 `skills/agentbox` 整個複製到 `~/.agents/skills/agentbox`，或 OpenClaw workspace 的 `skills/agentbox`。release 壓縮檔裡也附了同一份 `skills/` 資料夾。複製後開一個新的 agent session，skill 才會載入。OpenClaw 會依 `metadata.openclaw.requires.bins` 檢查 PATH 上有沒有 `agentbox`，找不到時不會載入這個 skill。
+
+skill 裡的每一行 `agentbox ...` 範例都會在測試中用真正的命令列定義解析一次（`cargo test skill`），範例和實際旗標不一致時 CI 會失敗。
 
 ## 建置
 

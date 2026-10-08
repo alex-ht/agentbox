@@ -187,6 +187,10 @@ pub enum Cmd {
     #[command(subcommand)]
     Config(ConfigCmd),
 
+    /// Install the bundled Agent Skill (SKILL.md + references) for agents
+    #[command(subcommand)]
+    Skill(SkillCmd),
+
     /// Print OpenAI-style function-tool JSON schemas for all subcommands
     #[command(after_help = "Examples:\n  agentbox schema\n  agentbox schema --implemented-only")]
     Schema {
@@ -226,12 +230,12 @@ pub enum FileCmd {
     },
     /// Write a whole file (shows a diff; --apply to write)
     #[command(
-        after_help = "Examples:\n  agentbox file write out.md --content \"# Title\"\n  agentbox file write out.md --content \"# Title\" --apply"
+        after_help = "Examples:\n  agentbox file write out.md --content \"# Title\"\n  agentbox file write out.md --content \"# Title\" --apply\n  agentbox file write out.md --content - --apply <<'EOF'   (content from stdin)"
     )]
     Write {
         /// File path
         path: String,
-        /// New full file content
+        /// New full file content; `-` reads it from stdin
         #[arg(long, allow_hyphen_values = true)]
         content: String,
         /// Actually write the file
@@ -240,15 +244,23 @@ pub enum FileCmd {
     },
     /// Replace exact text (shows a diff; --apply to write)
     #[command(
-        after_help = "Examples:\n  agentbox file replace config.toml --find \"debug = true\" --replace \"debug = false\"\n  agentbox file replace a.md --find old --replace new --all --apply"
+        after_help = "Examples:\n  agentbox file replace config.toml --find \"debug = true\" --replace \"debug = false\"\n  agentbox file replace a.md --find old --replace new --all --apply\n  agentbox file replace report.md --todo 2 --replace \"Axum\" --apply\n  agentbox file replace report.md --todo 3 --replace - --apply <<'EOF'   (text from stdin)"
     )]
     Replace {
         /// File path
         path: String,
         /// Exact text to find (must occur once unless --all)
-        #[arg(long, allow_hyphen_values = true)]
-        find: String,
-        /// Replacement text
+        #[arg(
+            long,
+            allow_hyphen_values = true,
+            required_unless_present = "todo",
+            conflicts_with = "todo"
+        )]
+        find: Option<String>,
+        /// Replace the whole `<!-- TODO(N): ... -->` placeholder N (from report build)
+        #[arg(long)]
+        todo: Option<usize>,
+        /// Replacement text; `-` reads it from stdin
         #[arg(long, allow_hyphen_values = true)]
         replace: String,
         /// Replace every occurrence
@@ -292,13 +304,41 @@ pub enum NoteCmd {
         #[arg(long, default_value_t = 50)]
         limit: usize,
     },
+    /// Delete notes (all, or one tag) before a new task; preview unless --apply
+    #[command(
+        after_help = "Examples:\n  agentbox note clear\n  agentbox note clear --apply\n  agentbox note clear --tag item1 --apply"
+    )]
+    Clear {
+        /// Only notes with this tag
+        #[arg(long)]
+        tag: Option<String>,
+        /// Actually delete them
+        #[arg(long)]
+        apply: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SkillCmd {
+    /// Copy the agentbox skill into a skills directory (preview unless --apply)
+    #[command(
+        after_help = "Writes <DIR>/agentbox/SKILL.md and references/. Default DIR: ~/.agents/skills\n(%USERPROFILE%\\.agents\\skills on Windows). For an OpenClaw workspace use --dir <workspace>/skills.\nThe agentbox binary itself must be on PATH.\n\nExamples:\n  agentbox skill install\n  agentbox skill install --apply\n  agentbox skill install --dir ./skills --apply"
+    )]
+    Install {
+        /// Skills root directory; files go to DIR/agentbox/
+        #[arg(long)]
+        dir: Option<String>,
+        /// Actually write the files
+        #[arg(long)]
+        apply: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
 pub enum ConfigCmd {
     /// Store a setting; use `-` (or omit the value) to read it from stdin
     #[command(
-        after_help = "Examples:\n  agentbox config set tavily.api_key -      (then paste the key, press Enter)\n  agentbox config set search.backend bing\n\nKeys: tavily.api_key, search.backend. Env TAVILY_API_KEY overrides the file."
+        after_help = "Examples:\n  agentbox config set tavily.api_key -      (then paste the key, press Enter)\n  agentbox config set search.backend bing\n\nKeys: tavily.api_key, stooq.api_key, search.backend. Env TAVILY_API_KEY / STOOQ_API_KEY override the file."
     )]
     Set {
         /// Setting name, e.g. tavily.api_key

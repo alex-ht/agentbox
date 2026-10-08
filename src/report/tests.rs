@@ -150,7 +150,7 @@ fn citations_forbidden_h1_todo_and_heading_format() {
     assert_eq!(r.stats.todos_left, 1);
     assert!(issue(&r, "todo")
         .fix
-        .contains(r####"--find "<!-- TODO(4): write more -->""####));
+        .contains(r####"--todo 4 --replace "YOUR TEXT" --apply"####));
 
     let md = top3().replace("## Sources", "##Sources");
     let r = check_text(&md, &t, "r.md", None);

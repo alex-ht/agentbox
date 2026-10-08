@@ -87,6 +87,24 @@ fn replace_cmd(file: &str, old: &str, new: &str) -> String {
     )
 }
 
+/// Fix command for a placeholder: `--todo N` when it is a numbered TODO,
+/// else an exact `--find` of the marker.
+fn todo_cmd(file: &str, marker: &str) -> String {
+    let n: String = marker
+        .strip_prefix("<!-- TODO(")
+        .map(|r| r.chars().take_while(|c| c.is_ascii_digit()).collect())
+        .unwrap_or_default();
+    if n.is_empty() {
+        replace_cmd(file, marker, "YOUR TEXT")
+    } else {
+        format!(
+            "agentbox file replace {} --todo {n} --replace {} --apply",
+            q(file),
+            q("YOUR TEXT")
+        )
+    }
+}
+
 fn hashes(level: u8) -> String {
     "#".repeat(level as usize)
 }
@@ -284,7 +302,7 @@ pub fn check_text(text: &str, t: &Template, file: &str, allowed: Option<&[String
                 format!("unfinished placeholder: {marker}"),
                 format!(
                     "Write the real content, then run: {}",
-                    replace_cmd(file, &marker, "YOUR TEXT")
+                    todo_cmd(file, &marker)
                 ),
             );
         }

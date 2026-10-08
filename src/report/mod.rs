@@ -84,7 +84,7 @@ pub fn run_build(store: &Store, a: &BuildArgs) -> CmdResult {
             let mut data = summary;
             data["content"] = json!(built.content);
             Ok(Output::new(data).hint(format!(
-                "Draft only. Save it with `--out report.md --apply`, replace each <!-- TODO(n) --> via `agentbox file replace`, then run `{}`.",
+                "Draft only. Save it with `--out report.md --apply`, replace each <!-- TODO(n) --> via `agentbox file replace report.md --todo N --replace \"text\" --apply`, then run `{}`.",
                 check_cmd("report.md")
             )))
         }
@@ -98,7 +98,7 @@ pub fn run_build(store: &Store, a: &BuildArgs) -> CmdResult {
             }
             let hint = if a.apply {
                 format!(
-                    "Written. Fill the {} TODOs with `agentbox file replace {path} --find \"<!-- TODO(1): ...full marker... -->\" --replace \"text\" --apply`, then run `{}`.",
+                    "Written. Fill the {} TODOs one by one with `agentbox file replace {path} --todo 1 --replace \"text\" --apply` (TODO 2, 3, ... the same way), then run `{}`.",
                     built.todos,
                     check_cmd(path)
                 )

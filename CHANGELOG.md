@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **Agent Skill**：`skills/agentbox/`（agentskills.io 格式，英文）教小模型怎麼用 agentbox：`SKILL.md` 加上 `references/` 裡的細節與常見任務做法；`agentbox skill install [--dir] [--apply]` 安裝到 `~/.agents/skills/agentbox` 或指定目錄。release 壓縮檔也會附上這份資料夾。
+- `file replace --todo N`：直接取代報告骨架裡的第 N 個 `<!-- TODO(N): ... -->`；`report check` 的修正命令也改用這個寫法。
+- `file write --content -`、`file replace --replace -`：從標準輸入讀內容，搭配 heredoc 就不必處理 `$`、引號與換行。
+- `note clear [--tag] [--apply]`：開始新任務前清掉舊筆記。
+
+### 測試
+
+- skill 裡每一行 `agentbox ...` 範例都會用真正的 clap 定義解析，避免說明檔與命令列脫節。
+
 ## [0.1.0] - 2026-10-08
 
 第一個公開版本：單一靜態執行檔，提供 Linux（x86_64 musl）與 Windows（x86_64 MSVC）版本。

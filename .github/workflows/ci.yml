@@ -40,6 +40,9 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Test
         run: cargo test --locked
+      - name: Skill drift check
+        # Every `agentbox ...` line in skills/**/*.md must parse with the real CLI.
+        run: cargo test --locked skill::tests -- --nocapture
 
   build:
     name: build (${{ matrix.target }})
@@ -88,6 +91,7 @@ jobs:
           name="agentbox-${GITHUB_REF_NAME//\//-}-${{ matrix.target }}"
           mkdir -p "dist/$name"
           cp README.md CHANGELOG.md LICENSE "dist/$name/"
+          cp -R skills "dist/$name/"
           if [ "${{ matrix.archive }}" = "zip" ]; then
             cp "target/${{ matrix.target }}/release/agentbox.exe" "dist/$name/"
             (cd dist && 7z a "$name.zip" "$name" >/dev/null)

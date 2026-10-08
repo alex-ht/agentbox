@@ -16,17 +16,21 @@ pub fn default_home() -> PathBuf {
     if let Some(p) = std::env::var_os("AGENTBOX_HOME").filter(|s| !s.is_empty()) {
         return PathBuf::from(p);
     }
+    user_home().join(".agentbox")
+}
+
+/// The user's home directory (`%USERPROFILE%` first on Windows), else `.`.
+pub fn user_home() -> PathBuf {
     let candidates: [&str; 2] = if cfg!(windows) {
         ["USERPROFILE", "HOME"]
     } else {
         ["HOME", "USERPROFILE"]
     };
-    let base = candidates
+    candidates
         .iter()
         .find_map(|k| std::env::var_os(k).filter(|s| !s.is_empty()))
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
-    base.join(".agentbox")
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
