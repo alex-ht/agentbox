@@ -4,7 +4,7 @@
 
 小模型最常卡在「工具之間的膠水」：抓網頁後要自己寫 Python 清 HTML、要用 `grep | jq` 找數字、算個漲跌幅還得開 REPL。agentbox 把這些膠水做進工具裡，模型只要選對子命令、填對參數，就能完成像 PinchBench 那類任務：查股價、找活動、市場調查、Polymarket 簡報、查高階主管、深度研究、競品研究、找開源替代品、比價、IT 採購、歐盟法規、BYOK 最佳實務等。
 
-> 目前版本：v0.1。`quote` 與 `market` 還只是佔位，見下方狀態表。
+> 目前版本：v0.1。
 
 ## 設計原則
 
@@ -30,15 +30,15 @@
 | `note add\|list` | 暫存筆記與來源清單，跨呼叫保留，方便最後引用 | ✅ 可用 |
 | `report build\|check\|templates\|template show` | 依範本產生報告骨架（標題、編號、TODO、筆記與引用、Sources）；檢查報告結構並給出可直接執行的修正命令 | ✅ 可用 |
 | `search <query>` | 網路搜尋：有 Tavily 金鑰就用 Tavily，否則用免金鑰的 DuckDuckGo（被擋時改用 Bing）；`--save N` 可把前幾筆直接存成 doc | ✅ 可用 |
-| `config set\|get\|unset\|path` | 管理設定（例如 Tavily API 金鑰），金鑰一律遮罩顯示 | ✅ 可用 |
+| `config set\|get\|unset\|path` | 管理設定（例如 Tavily、Stooq API 金鑰），金鑰一律遮罩顯示 | ✅ 可用 |
 | `schema` | 輸出所有子命令的 function tool schema | ✅ 可用 |
 | `call <name> <json>` | 用 schema 名稱 + JSON 參數執行工具（給框架用） | ✅ 可用 |
 | `extract <doc...> --kind K` | 從一或多份文件抽出表格、價格、日期、人名職稱、連結、數字、email，每筆附來源；`--save-table` 存成 `tbl:N` | ✅ 可用 |
 | `table show\|query\|import\|export` | `tbl:N` 或 CSV／TSV／JSON／Markdown 表格的檢視、過濾、排序、分組加總與匯出，不用寫程式 | ✅ 可用 |
-| `quote <symbol>` | 股價與歷史價格 | 🚧 規劃中 |
-| `market <query>` | 預測市場（如 Polymarket）賠率 | 🚧 規劃中 |
+| `quote get\|history\|search` | 股票、指數、匯率、加密貨幣的即時報價、歷史價格與代號查詢（Yahoo，免金鑰；Stooq 備援） | ✅ 可用 |
+| `market search\|get\|trending\|history` | Polymarket 預測市場：關鍵字搜尋、熱門、單一活動細節與機率走勢（唯讀，免金鑰） | ✅ 可用 |
 
-規劃中的子命令參數已經定好，呼叫時會回傳 `not_implemented`，並在 `hint` 裡給一個目前就能用的替代做法（例如改用 `fetch` 抓某個公開 API）。
+所有子命令都已實作，`agentbox schema --implemented-only` 會列出全部 26 個工具。
 
 ## 搜尋與 Tavily 金鑰
 
@@ -113,6 +113,7 @@ agentbox config unset tavily.api_key
 | `compare` | Summary、Comparison（表格，欄位預設 Option / Price / Strengths / Weaknesses，可用 `--columns` 改）、Recommendation | 150–1200 | 3 |
 | `top-n` | `## 1. 標題` … `## N. 標題`，每項都要引用（`--n` 設定項目數，預設 3） | 100–1500 | 3 |
 | `exec-lookup` | Summary、Role and Background、Key Facts（後兩段需引用） | 80–800 | 2 |
+| `market-brief` | Overview、`## 1. 市場` … `## N. 市場`，每項都要引用、寫出機率 `%` 並附 polymarket.com 連結（`--n` 預設 3） | 120–1500 | 3 |
 
 每個範本都要求一個 H1 標題、結尾的 `## Sources`，並禁止「As an AI」之類的句子。
 
@@ -282,6 +283,82 @@ agentbox report build "Asana vs Monday vs ClickUp pricing" --template compare --
 | 9 | $9/user/mo | doc:1 |
 | 10.99 | $10.99/user/mo | doc:1 |
 
+## 股價：`quote`
+
+`quote` 不需要金鑰：預設用 Yahoo Finance 的公開端點，Yahoo 擋下或限流時自動改用 Stooq。輸出的 `backend` 欄位會寫明資料來源。
+
+```bash
+agentbox quote get NVDA 2330.TW ^TWII USDTWD=X        # 一次查多檔，空白或逗號分隔都可以
+agentbox quote history 2330.TW --range 6mo --save     # 每日 OHLCV + 摘要，全部列存成 tbl:N
+agentbox quote history ^GSPC --range 5y               # 5y 預設週線，max 預設月線
+agentbox quote search "Taiwan Semiconductor"          # 用公司名稱找代號
+agentbox quote search 台積電                           # 常見台港股與指數的中文名稱也查得到
+```
+
+代號一律用 Yahoo 格式：
+
+| 市場 | 範例 |
+|---|---|
+| 美股 | `NVDA`、`BRK-B` |
+| 台股上市／上櫃 | `2330.TW`、`6488.TWO` |
+| 港股 | `0700.HK` |
+| 指數 | `^GSPC`、`^IXIC`、`^TWII`、`^HSI` |
+| 匯率 | `USDTWD=X`、`JPYTWD=X` |
+| 加密貨幣 | `BTC-USD`、`ETH-USD` |
+
+- `quote get` 每檔回傳 `price`、`previous_close`、`change`、`change_pct`、`currency`、`exchange`、`type`、`market_state`（pre／regular／post／closed）、`time`（帶交易所時區的 ISO 時間）、`timezone`、當日高低、`volume`、`week52_high`／`week52_low`。一次最多 10 檔；部分代號失敗時其餘照常回傳，失敗的放在 `errors`。
+- 只給數字（例如 `2330`）會回 `ambiguous_symbol`，hint 建議加上 `.TW`（上市）或 `.TWO`（上櫃）；不認得的代號回 `symbol_not_found`，hint 建議改用 `quote search`。
+- `quote history` 的 `--range` 可選 `5d`、`1mo`、`3mo`、`6mo`、`ytd`、`1y`、`5y`、`max`，`--interval` 可選 `1d`、`1wk`、`1mo`。輸出 `summary`（起訖日期與收盤、漲跌與漲跌幅、區間最高／最低與日期）和最近 30 列；`--save` 會把全部列存成 `tbl:N`，可再用 `table query tbl:N --sort -volume` 之類的命令分析。
+- Yahoo 回 429 或被擋時（`rate_limited`），hint 會建議 `--backend stooq`。Stooq 只補「最新報價」：沒有前一日收盤，所以 `change` 是 `null`；也沒有台股。Stooq 的歷史資料自 2026 年起需要免費金鑰，若要用它當歷史資料的備援，請設定環境變數 `STOOQ_API_KEY` 或執行 `agentbox config set stooq.api_key -`（從標準輸入讀取）；和 Tavily 金鑰一樣，不接受命令列旗標，也不會出現在任何輸出裡。
+- `quote search` 先比對內建的別名表（台積電、鴻海、聯發科、騰訊、加權指數、比特幣、美元台幣等），再合併 Yahoo 的搜尋結果；Yahoo 的搜尋不接受中文，所以中文查詢只會回傳別名表裡有的項目。
+
+> 報價可能延遲（通常約 15 分鐘），僅供研究參考，不適合拿來下單。每次輸出的 `note` 欄位也會提醒這一點。
+
+## 預測市場：`market`
+
+`market` 讀取 Polymarket 的公開資料（唯讀、免金鑰）：活動與市場來自 Gamma API，機率走勢來自 CLOB API。機率就是市場價格換算成的百分比（0.62 → 62%），是交易者的定價，不是預測。
+
+```bash
+agentbox market trending                              # 24 小時成交量最高的活動
+agentbox market trending --tag politics --limit 5     # 只看某個主題（tag slug）
+agentbox market search election --limit 15            # 關鍵字搜尋
+agentbox market search "fed rate" --closed            # 已結算的市場
+agentbox market get balance-of-power-2026-midterms    # 單一活動的所有市場、規則與網址
+agentbox market history 2026-balance-of-power-d-senate-d-house-949 --interval 1m --save
+```
+
+- **搜尋**：先用 Polymarket 的公開搜尋端點抓最多 3 頁（每頁 25 個活動）當候選，再在本機做不分大小寫的關鍵字比對（每個字都要出現在活動標題、市場問題、說明或 tag 裡），去重後依 `--sort` 排序（`volume` 預設、`liquidity`、`end` 最快結束的在前、`newest`）。`--limit` 預設 10；過去經驗是候選太少會找不到相關市場，所以候選池刻意抓大。沒有任何活動同時包含所有關鍵字時，會改列 Polymarket 自己的相近結果，並標上 `match:"fuzzy"`。搜尋端點故障時，改掃成交最活躍的 300 個活動再本機過濾（`via:"events-scan"`）。
+- **狀態**：預設只看進行中的活動；`--closed` 只看已結算的，兩個旗標都給就全部。`--tag` 是 tag 的 slug（例如 `politics`、`elections`、`crypto`、`sports`、`economy`），每個活動的 `tags` 欄位會列出自己的 slug。
+- **輸出**：每個活動有 `title`、`slug`、`url`（`https://polymarket.com/event/<slug>`）、`end_date`、`volume`、`volume_24h`、`liquidity`、`tags`，以及機率最高的前 3 個市場。每個市場有 `odds`（例如 `Yes 63.5% · No 36.5%`），是非題另有 `yes_pct`，其他題型有 `leader` 與 `leader_pct`；`change_1d_pts` 是一天內變動的百分點。
+- **`market get`** 接受活動或市場的 slug、數字 id，或直接貼 polymarket.com 網址，回傳所有市場（`--limit` 預設 20）、每個結果的機率、一週變動、最後成交價、結算規則（`description`）與每個市場的網址。Polymarket 預先建立、還沒有價格的占位市場（例如「Person X」）會自動略過。
+- **`market history`** 要指定單一市場（市場 slug 或 id）。傳入有多個市場的活動時，會回 `ambiguous_market`，並列出機率最高的幾個市場 slug 供挑選。`--interval` 是 `1d`（每小時一點）、`1w`（每 6 小時，預設）、`1m`（每日）、`max`（每日）；`summary` 給起訖機率、`change_pts`（百分點變化）與區間高低點，時間一律 UTC。
+- **存成表格**：`market search` 與 `market trending` 加 `--save-table`，`market history` 加 `--save`，結果都會存成 `tbl:N`。市場表格的欄位是 event、market、outcome、pct、odds、change_1d_pts、volume_24h、volume、end_date、url、market_id，例如 `agentbox table query tbl:3 --where "pct >= 50" --sort -volume_24h`。
+- **連不上**：DNS 或連線失敗時回 `dns_error`／`network_error`，hint 會提醒：有些 DNS 過濾服務（例如採用 RPZ 封鎖清單的解析器）會擋 polymarket.com，可以用 `nslookup gamma-api.polymarket.com` 和公開解析器（如 1.1.1.1）的結果比對。
+
+### Polymarket 簡報範例
+
+內建的 `market-brief` 範本專門用在這類簡報：Overview 加上 N 個 `## n. 市場` 段落，每段都必須寫出機率（含 `%`）並附上 polymarket.com 連結，否則 `report check` 會報錯。
+
+```bash
+# 1. 找題目：熱門或關鍵字
+agentbox market trending --tag politics --limit 5
+agentbox market search "2028 presidential" --limit 15
+
+# 2. 看細節（所有結果、規則、網址），必要時看走勢
+agentbox market get balance-of-power-2026-midterms
+agentbox market history 2026-balance-of-power-d-senate-d-house-949 --interval 1m
+
+# 3. 記筆記，tag 用 item1、item2、item3，build 時會放進對應段落
+agentbox note add "Democrats Sweep trades at 63.5%" --source https://polymarket.com/event/balance-of-power-2026-midterms --tag item1
+
+# 4. 產生骨架、填 TODO、檢查
+agentbox report build "Polymarket politics brief" --template market-brief --n 3 --out brief.md --apply
+agentbox file replace brief.md --find "<!-- TODO(2): item title -->" --replace "Balance of Power: 2026 Midterms" --apply
+agentbox report check brief.md --template market-brief --n 3 --format md
+```
+
+想用一般的編號清單也可以：把第 4 步的範本換成 `--template top-n --n 3`，只是不會檢查 `%` 與 polymarket.com 連結。
+
 ## 建置
 
 需要 Rust 1.85 以上。
@@ -360,12 +437,12 @@ $ agentbox file replace config.toml --find "debug = true" --replace "debug = fal
 ### 接進 agent 框架
 
 ```bash
-agentbox schema --implemented-only > tools.json   # 每個元素就是一個 function tool
+agentbox schema --implemented-only > tools.json   # 工具清單在 data.tools，每個元素就是一個 function tool
 agentbox call read '{"doc":"doc:4","section":2}'  # 模型呼叫工具時，原樣轉給 agentbox
 agentbox call report_check '{"file":"report.md","template":"top-n","n":3}'
 ```
 
-報告相關的工具刻意拆成 `report_build`、`report_check`、`report_templates`、`report_template_show` 四個，而不是一個帶 `action` 參數的大工具：每個工具只有自己需要的參數，小模型比較不會填錯，也不必記得哪些參數搭配哪個動作。
+報告相關的工具刻意拆成 `report_build`、`report_check`、`report_templates`、`report_template_show` 四個，而不是一個帶 `action` 參數的大工具（`table_*`、`quote_*`、`market_*` 也一樣）：每個工具只有自己需要的參數，小模型比較不會填錯，也不必記得哪些參數搭配哪個動作。
 
 在 Windows PowerShell 傳 JSON 參數時引號容易被吃掉，建議改用標準輸入：
 

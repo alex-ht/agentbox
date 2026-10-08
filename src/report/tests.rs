@@ -605,3 +605,26 @@ fn style_must_contain_notes_setext_and_empty_table() {
     let i = issue(&r, "table");
     assert_eq!(i.severity, "warn");
 }
+
+#[test]
+fn market_brief_requires_probability_and_polymarket_link() {
+    let item = |n: u32, title: &str, slug: &str, pct: &str| {
+        format!(
+            "## {n}. {title}\n\nTraders price this at {pct} as of 8 Oct 2026, up 4 pts this week on $1.2M of 24h volume; the market ends on 4 Nov 2026 and resolves on official results ([polymarket.com](https://polymarket.com/event/{slug})).\n\n"
+        )
+    };
+    let report = |second_pct: &str| {
+        format!(
+            "# Midterms market brief\n\n## Overview\n\nThree Polymarket markets on the 2026 US midterms, snapshot 8 Oct 2026 06:00 UTC. Prices are market odds, not forecasts, and they can move quickly.\n\n{}{}{}## Sources\n\n- [A](https://polymarket.com/event/a)\n- [B](https://polymarket.com/event/b)\n- [C](https://polymarket.com/event/c)\n",
+            item(1, "Democrats sweep", "a", "63.5%"),
+            item(2, "R Senate, D House", "b", second_pct),
+            item(3, "Republicans sweep", "c", "8.5%"),
+        )
+    };
+    let t = tpl("market-brief");
+    let good = check_text(&report("27.5%"), &t, "brief.md", None);
+    assert!(good.pass, "{:#?}", good.issues);
+    let bad = check_text(&report("about a quarter"), &t, "brief.md", None);
+    assert_eq!(rules(&bad), ["must_contain"]);
+    assert!(issue(&bad, "must_contain").message.contains("\"%\""));
+}

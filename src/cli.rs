@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 pub const TOP_HELP: &str = "\
 Output is one JSON line: {\"ok\":true,\"data\":...,\"hint\":...} or
 {\"ok\":false,\"error\":{\"code\",\"message\"},\"hint\":...}. Use --format md for Markdown.
-State (docs, notes) lives in $AGENTBOX_HOME (default ~/.agentbox).
+State (docs, notes, tables) lives in $AGENTBOX_HOME (default ~/.agentbox).
 
 Examples:
   agentbox fetch https://example.com
@@ -171,34 +171,19 @@ pub enum Cmd {
     #[command(subcommand)]
     Table(TableCmd),
 
-    /// [planned] Stock quote and price history for a ticker
-    #[command(after_help = "Example:\n  agentbox quote NVDA --range 1mo")]
-    Quote {
-        /// Ticker symbol, e.g. AAPL or 2330.TW
-        symbol: String,
-        /// History range
-        #[arg(long, default_value = "1d", value_parser = ["1d", "5d", "1mo", "6mo", "1y", "5y"])]
-        range: String,
-    },
+    /// Stock, index, FX and crypto quotes, price history, ticker lookup
+    #[command(subcommand)]
+    Quote(QuoteCmd),
 
-    /// [planned] Prediction-market odds (e.g. Polymarket) for a topic
-    #[command(after_help = "Example:\n  agentbox market \"fed rate cut\" --limit 5")]
-    Market {
-        /// Topic or keywords
-        query: String,
-        /// Number of markets
-        #[arg(long, default_value_t = 10)]
-        limit: u32,
-        /// Include closed markets
-        #[arg(long)]
-        closed: bool,
-    },
+    /// Polymarket prediction markets: search, trending, details, odds history
+    #[command(subcommand)]
+    Market(MarketCmd),
 
     /// Build a report skeleton from a template, or check a report against one
     #[command(subcommand)]
     Report(ReportCmd),
 
-    /// Settings such as the Tavily API key (stored in the state dir)
+    /// Settings such as the Tavily and Stooq API keys (stored in the state dir)
     #[command(subcommand)]
     Config(ConfigCmd),
 
@@ -465,5 +450,122 @@ pub enum TemplateCmd {
     Show {
         /// Template name or path
         name: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum QuoteCmd {
+    /// Latest price, change, 52-week range for one or more symbols
+    #[command(
+        after_help = "Symbols: NVDA, 2330.TW (TWSE), 6488.TWO (TPEx), 0700.HK, ^GSPC, ^TWII, USDTWD=X, BTC-USD.\nData may be delayed ~15 min; for research, not trading.\n\nExamples:\n  agentbox quote get NVDA 2330.TW ^TWII\n  agentbox quote get USDTWD=X,BTC-USD --format md"
+    )]
+    Get {
+        /// One or more symbols (space- or comma-separated)
+        #[arg(required = true)]
+        symbols: Vec<String>,
+        /// Data source; auto = Yahoo, then Stooq if Yahoo is blocked
+        #[arg(long, default_value = "auto", value_parser = ["auto", "yahoo", "stooq"])]
+        backend: String,
+    },
+    /// Daily/weekly/monthly OHLCV rows plus a summary (start, end, % change, high, low)
+    #[command(
+        after_help = "Examples:\n  agentbox quote history NVDA --range 6mo\n  agentbox quote history 2330.TW --range 1y --interval 1wk --save"
+    )]
+    History {
+        /// Symbol, e.g. NVDA or 2330.TW
+        symbol: String,
+        /// Time window
+        #[arg(long, default_value = "1mo", value_parser = ["5d", "1mo", "3mo", "6mo", "ytd", "1y", "5y", "max"])]
+        range: String,
+        /// Bar size (default: 1d; 1wk for 5y; 1mo for max)
+        #[arg(long, value_parser = ["1d", "1wk", "1mo"])]
+        interval: Option<String>,
+        /// Data source; Stooq history needs STOOQ_API_KEY
+        #[arg(long, default_value = "auto", value_parser = ["auto", "yahoo", "stooq"])]
+        backend: String,
+        /// Save all rows as a tbl:N for `table query`
+        #[arg(long)]
+        save: bool,
+    },
+    /// Find ticker symbols by company name (Chinese names of major TW/HK stocks work too)
+    #[command(
+        after_help = "Examples:\n  agentbox quote search \"Taiwan Semiconductor\"\n  agentbox quote search 台積電"
+    )]
+    Search {
+        /// Company name, keyword or ticker
+        query: String,
+        /// Maximum results
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum MarketCmd {
+    /// Find events by keyword (title, question, description); odds as percentages
+    #[command(
+        after_help = "Default: active events, sorted by total volume. --closed = resolved only; --active --closed = both.\n\nExamples:\n  agentbox market search \"fed rate\"\n  agentbox market search election --tag politics --limit 15 --save-table\n  agentbox market search bitcoin --sort end"
+    )]
+    Search {
+        /// Keywords; every word must appear in the event
+        query: String,
+        /// Maximum events returned
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+        /// Only active events (the default)
+        #[arg(long)]
+        active: bool,
+        /// Only closed (resolved) events; with --active, both
+        #[arg(long)]
+        closed: bool,
+        /// Order of results
+        #[arg(long, default_value = "volume", value_parser = ["volume", "liquidity", "end", "newest"])]
+        sort: String,
+        /// Only events with this tag slug, e.g. politics, crypto, sports
+        #[arg(long)]
+        tag: Option<String>,
+        /// Also save every market of the results as a tbl:N
+        #[arg(long)]
+        save_table: bool,
+    },
+    /// One event (all its markets and outcomes) or one market, with rules
+    #[command(
+        after_help = "Accepts an event or market slug, a numeric id, or a polymarket.com URL.\n\nExamples:\n  agentbox market get balance-of-power-2026-midterms\n  agentbox market get https://polymarket.com/event/presidential-election-winner-2028"
+    )]
+    Get {
+        /// Event/market slug, id, or polymarket.com URL
+        id: String,
+        /// Maximum markets listed for multi-market events
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Most active events right now (by 24h volume)
+    #[command(
+        after_help = "Examples:\n  agentbox market trending\n  agentbox market trending --tag crypto --limit 5 --save-table"
+    )]
+    Trending {
+        /// Maximum events returned
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+        /// Only events with this tag slug, e.g. politics, crypto, sports
+        #[arg(long)]
+        tag: Option<String>,
+        /// Also save every open market of the results as a tbl:N
+        #[arg(long)]
+        save_table: bool,
+    },
+    /// Probability over time for one market (first outcome, usually Yes)
+    #[command(
+        after_help = "Pass a market slug or id (multi-market events list their markets in `market get`).\n\nExamples:\n  agentbox market history 2026-balance-of-power-d-senate-d-house-949 --interval 1m\n  agentbox market history 559652 --interval max --save"
+    )]
+    History {
+        /// Market slug or id (or a single-market event slug / URL)
+        id: String,
+        /// Window: 1d hourly points, 1w 6-hourly, 1m daily, max daily
+        #[arg(long, default_value = "1w", value_parser = ["1d", "1w", "1m", "max"])]
+        interval: String,
+        /// Save all points as a tbl:N for `table query`
+        #[arg(long)]
+        save: bool,
     },
 }

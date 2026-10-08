@@ -14,6 +14,10 @@ pub const BUILTINS: &[(&str, &str)] = &[
         "exec-lookup",
         include_str!("../../templates/exec-lookup.toml"),
     ),
+    (
+        "market-brief",
+        include_str!("../../templates/market-brief.toml"),
+    ),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

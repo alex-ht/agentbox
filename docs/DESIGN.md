@@ -13,7 +13,7 @@
 
 - `ok`：布林值，框架只看這個欄位判斷成敗。
 - `data`：成功時的結果，結構依子命令而定，但盡量扁平，欄位名稱用 snake_case。
-- `error.code`：機器可判讀的錯誤碼（如 `bad_args`、`http_error`、`doc_not_found`、`not_implemented`），程式可以據此分支。
+- `error.code`：機器可判讀的錯誤碼（如 `bad_args`、`http_error`、`doc_not_found`、`symbol_not_found`、`rate_limited`、`dns_error`），程式可以據此分支。
 - `error.message`：一句話說明發生什麼事，包含關鍵數值（例如找到幾次、檔案有幾行）。
 - `hint`：失敗時**一定要有**，內容是「下一步可以怎麼做」，最好直接附上可複製的命令。成功時可為 `null`，或提示接下來常見的動作（例如 `fetch` 之後提示用 `read`）。
 
@@ -69,16 +69,17 @@ $AGENTBOX_HOME（預設 ~/.agentbox 或 %USERPROFILE%\.agentbox）
 
 ## 5. 金鑰與機密
 
-- 金鑰只從環境變數（`TAVILY_API_KEY`）或 `config.toml` 讀取，不接受命令列旗標，避免出現在 agent 對話紀錄與程序清單。
+- 金鑰只從環境變數（`TAVILY_API_KEY`、`STOOQ_API_KEY`）或 `config.toml`（`[tavily] api_key`、`[stooq] api_key`）讀取，不接受命令列旗標，避免出現在 agent 對話紀錄與程序清單。
 - 任何輸出（資料、錯誤訊息、hint）都不得包含金鑰。`search` 在回傳前會再把金鑰字串替換成 `[redacted]`，就算上游 API 把金鑰回傳在錯誤訊息裡也一樣；`config get` 只顯示公開前綴（如 `tvly-dev-****`）、長度與 FNV 短指紋。
 - `config` 不放進 `schema`，`call` 也無法呼叫它：設定金鑰是使用者的事，不該經過模型。
-- 測試用的服務位址可用 `AGENTBOX_TAVILY_URL`、`AGENTBOX_DDG_URL`、`AGENTBOX_BING_URL` 覆寫，單元測試用內建的 std `TcpListener` 假伺服器，不需要真的金鑰。
+- Stooq 金鑰放在網址參數裡，而 reqwest 的錯誤訊息會帶完整網址，所以 `quote` 的每個錯誤訊息都會先把金鑰換成 `[redacted]`。
+- 測試用的服務位址可用 `AGENTBOX_TAVILY_URL`、`AGENTBOX_DDG_URL`、`AGENTBOX_BING_URL`、`AGENTBOX_YAHOO_URL`、`AGENTBOX_STOOQ_URL`、`AGENTBOX_GAMMA_URL`、`AGENTBOX_CLOB_URL` 覆寫，單元測試用內建的 std `TcpListener` 假伺服器，不需要真的金鑰，也不連外網。
 
 ## 6. 工具 schema
 
 `src/schema.rs` 有一張手寫的規格表，`agentbox schema` 由它產生 OpenAI function tool 格式；`agentbox call` 也用同一張表把 JSON 參數轉回命令列。單元測試會逐一比對規格表與 clap 定義（參數名稱、是否必填、預設值、可選值），兩邊不一致就會失敗，避免 schema 與實際行為脫節。巢狀子命令的工具名稱用底線連接，例如 `file_replace`、`note_add`。可重複的旗標（如 `search --site`）在 schema 裡是字串陣列，`call` 會展開成多個 `--site=...`。
 
-報告工具拆成 `report_build`、`report_check`、`report_templates`、`report_template_show` 四個獨立的 function tool，而不是一個 `report` 工具加 `action` 參數。理由是小模型最容易犯的錯是參數搭配錯誤（例如對 `check` 傳了 `title`、對 `build` 傳了 `file`）；拆開後每個工具的 schema 只列自己用得到的參數，必填欄位也很明確，描述可以直接寫「下一步做什麼」。代價只是工具清單多三個項目。schema 測試會遞迴走訪任意深度的巢狀子命令（`report template show` → `report_template_show`），確保規格表與 clap 定義同步。
+報告工具拆成 `report_build`、`report_check`、`report_templates`、`report_template_show` 四個獨立的 function tool，而不是一個 `report` 工具加 `action` 參數。理由是小模型最容易犯的錯是參數搭配錯誤（例如對 `check` 傳了 `title`、對 `build` 傳了 `file`）；拆開後每個工具的 schema 只列自己用得到的參數，必填欄位也很明確，描述可以直接寫「下一步做什麼」。代價只是工具清單多三個項目。`table_*`（4 個）、`quote_*`（3 個）、`market_*`（4 個）沿用同樣的拆法；`extract` 例外，所有 kind 共用同一組參數，所以是一個工具加 `kind` 列舉。schema 測試會遞迴走訪任意深度的巢狀子命令（`report template show` → `report_template_show`），確保規格表與 clap 定義同步。
 
 ## 7. 報告範本與檢查
 
@@ -132,3 +133,25 @@ htmd 預設會把 `<table>` 攤平成文字。`fetch` 註冊了自己的 table h
 - **儲存**：`table import` 與 `query --save` 都會寫 `tables/N.json`；與最近 200 張表中內容完全相同的表會重用 handle。`query` 顯示預設 20 列，只有明確給 `--limit` 時存下的表才會截斷。
 - **匯出**：`table export --out` 依副檔名輸出 CSV／TSV／Markdown／JSON（物件陣列），走 `file write` 相同的預覽／`--apply` 流程。
 - **schema**：`table_show`、`table_query`、`table_import`、`table_export` 是四個獨立工具（理由同第 6 節）；`extract` 是單一工具加上 `kind` 列舉，因為所有 kind 共用同一組參數，拆開只會讓工具清單變長。
+
+## 10. 報價（quote）
+
+- **來源**：`quote get` 對每個代號呼叫 Yahoo 的 `/v8/finance/chart/<SYM>?range=1d&interval=1d`，從 `meta` 取價格、前一日收盤（`previousClose`，沒有時用 `chartPreviousClose`）、52 週高低、交易所與時區。`market_state` 由 `currentTradingPeriod` 的 pre／regular／post 區間與目前時間推算，都不在區間內就是 `closed`。時間用 `regularMarketTime` 加上 `gmtoffset` 轉成帶時區的 ISO 字串。指數與匯率的成交量固定是 0，輸出改成 `null`。
+- **User-Agent**：用 agentbox 自己的 UA（`Mozilla/5.0 (compatible; agentbox/…)`）。實測 Yahoo 會對某些常見的瀏覽器 UA 回 429，自己的 UA 反而正常。依序嘗試 `query1`、`query2` 兩個主機，429、5xx 或連線失敗才換下一個。
+- **備援**：`--backend auto` 遇到 Yahoo 的暫時性錯誤（429／401／403、5xx、連線失敗）時改用 Stooq 的 `/q/l/?s=…&f=sd2t2ohlcvn&h&e=csv`，同一次呼叫的其餘代號直接走 Stooq。Stooq 沒有前一日收盤，所以 `change` 是 `null`，`time` 是 Stooq 的當地時間字串。代號轉換盡力而為：美股加 `.us`，`^GSPC` → `^spx`，`USDTWD=X` → `usdtwd`，`BTC-USD` → `btcusd`，`0700.HK` → `700.hk`；台股（`.TW`、`.TWO`）沒有對應，回 `unsupported_symbol`。Stooq 若回傳要求金鑰的說明頁，就回 `stooq_needs_key`。歷史資料（`/q/d/l/`）自 2026 年起一定要金鑰，所以只有設定金鑰時才會拿它當歷史資料的備援。代號找不到（404）不會切換備援，因為換來源也找不到。
+- **代號檢查**：4–6 位純數字（如 `2330`）在 Yahoo 會對到別的市場（2330 是日本的 OTC 股票），所以一律回 `ambiguous_symbol`，hint 列出 `.TW`／`.TWO`／`.HK`／`.T` 的寫法，不送出請求。
+- **多個代號**：最多 10 個，逐一查詢；部分失敗時 `ok:true`，失敗的放進 `errors`（symbol、code、message），hint 合併各自的建議；全部失敗才回錯誤（只有一個代號時就是它自己的錯誤碼）。
+- **數字格式**：依 `priceHint` 四捨五入（至少 2 位），整數輸出成整數（`2550` 而不是 `2550.0`）。
+- **歷史資料**：未指定 `--interval` 時，`5y` 用週線、`max` 用月線，其餘用日線。收盤為 `null` 的列略過，同一天重複的即時列只留最後一筆。輸出最近 30 列與涵蓋全部列的 `summary`；`--save` 存全部列，欄位固定為 date、open、high、low、close、volume，來源記為 `quote:<SYM>`。
+- **搜尋**：Yahoo `/v1/finance/search` 加上內建別名表（台港常見公司、主要指數、匯率、加密貨幣、黃金、原油的中英文名稱）。中文查詢 Yahoo 會回 400，這時只回別名表的結果，並在 hint 說明。別名表只做完全相同或中文子字串比對，避免「nvidia corp」這類英文查詢誤中。
+
+## 11. 預測市場（market）
+
+- **端點**：Gamma `/public-search`（搜尋）、`/events`（熱門、備援掃描）、`/events/slug/<slug>`、`/events/<id>`、`/markets/slug/<slug>`、`/markets/<id>`；CLOB `/prices-history?market=<token>&interval=…&fidelity=…`。Gamma 的 `outcomes`、`outcomePrices`、`clobTokenIds` 是「JSON 字串裡的陣列」，數字欄位有時是字串，解析時兩種都接受。
+- **搜尋策略**：小模型常因候選太少而找不到相關市場，所以 `market search` 一律抓最多 3 頁 × 25 個活動當候選（排序為 volume／liquidity 時交給伺服器排，其餘用伺服器的相關度），再在本機做「每個字都要出現」的不分大小寫比對，範圍是標題、說明、slug、各市場問題與標籤、tag。結果依活動 id 去重、依狀態過濾（伺服器的 `events_status` 偶爾會混入其他狀態）、再依 `--sort` 排序。`more_available` 表示候選池還沒抓完，`total_matches` 只是下限。沒有任何活動包含全部關鍵字時，退回伺服器的相近結果並標成 `match:"fuzzy"`；搜尋端點回 HTTP 錯誤或格式不對時，改掃 `/events`（依 24 小時成交量排序，最多 3 × 100 個）再本機過濾，標成 `via:"events-scan"`。連線層失敗不做這個備援，因為是同一個主機。
+- **市場的取捨**：沒有價格的占位市場（Polymarket 預先建立的「Person X」）一律略過。列表（search、trending）只列進行中活動裡還沒結算的市場，依機率由高到低取前 3 個；`market get` 列出全部（含已結算的，排在後面），上限由 `--limit` 控制，並回報 `markets_omitted`。
+- **機率表示**：價格 × 100，四捨五入到 0.1 個百分點。是非題給 `yes_pct`，其他題型給 `leader` 與 `leader_pct`；`odds` 是所有結果的文字版，方便直接引用。`change_1d_pts`、`change_1w_pts` 來自 Gamma 的 `oneDayPriceChange`、`oneWeekPriceChange`，單位是百分點。
+- **網址**：活動是 `https://polymarket.com/event/<slug>`；知道所屬活動時，市場是 `…/event/<活動>/<市場>`，否則用 `…/market/<市場>`（Polymarket 會轉址到所屬活動）。
+- **輸入解析**：`market get`／`history` 接受 slug、數字 id 或 polymarket.com 網址（`/event/<e>`、`/event/<e>/<m>`、`/market/<m>`）。`get` 先找活動再找市場；`history` 給數字 id 或市場 slug 時先找市場。活動只有一個市場（或只有一個還沒結算）時直接用它，否則回 `ambiguous_market` 並列出前幾個市場的 slug。
+- **走勢**：使用市場第一個結果（通常是 Yes）的 token。CLOB 對 `1w`、`1m` 有最小 fidelity 限制，所以固定用 1d → 60 分、1w → 360 分、1m 與 max → 1440 分。輸出最近 40 個點與完整摘要（起訖、百分點變化、高低點與時間，時間一律 UTC）；`--save` 存全部點，欄位為 `time` 與 `<outcome>_pct`。
+- **錯誤**：DNS 失敗是 `dns_error`，其他連線失敗是 `network_error`，兩者的 hint 都提醒 RPZ 類 DNS 過濾可能擋了 polymarket.com，並附 `nslookup` 的比對方法（被 sinkhole 的網域通常會在 TLS 交握時失敗，而不是查不到 DNS）。

@@ -5,4 +5,3 @@ pub mod note;
 pub mod now;
 pub mod read;
 pub mod search;
-pub mod stubs;

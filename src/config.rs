@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 /// Known keys: (dotted name, is_secret, environment variable that overrides it).
 pub const KEYS: &[(&str, bool, Option<&str>)] = &[
     ("tavily.api_key", true, Some("TAVILY_API_KEY")),
+    ("stooq.api_key", true, Some("STOOQ_API_KEY")),
     ("search.backend", false, None),
 ];
 

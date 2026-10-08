@@ -7,6 +7,9 @@ mod dom;
 mod envelope;
 mod extract;
 mod markdown;
+mod market;
+mod net;
+mod quote;
 mod render;
 mod report;
 mod schema;
@@ -16,7 +19,10 @@ mod table;
 mod testutil;
 
 use clap::Parser;
-use cli::{Cli, Cmd, ConfigCmd, FileCmd, Format, NoteCmd, ReportCmd, TableCmd, TemplateCmd};
+use cli::{
+    Cli, Cmd, ConfigCmd, FileCmd, Format, MarketCmd, NoteCmd, QuoteCmd, ReportCmd, TableCmd,
+    TemplateCmd,
+};
 use envelope::{envelope, AppError, CmdResult};
 use state::Store;
 use std::io::{Read, Write};
@@ -244,8 +250,87 @@ fn dispatch(cmd: Cmd, store: &Store) -> CmdResult {
         Cmd::Table(TableCmd::Export { source, out, apply }) => {
             table::run_export(store, &source, &out, apply)
         }
-        Cmd::Quote { .. } => cmd::stubs::not_implemented("quote"),
-        Cmd::Market { .. } => cmd::stubs::not_implemented("market"),
+        Cmd::Quote(q) => {
+            let ep = quote::Endpoints::from_env();
+            let key = config::resolve(store, "stooq.api_key", config::env_for("stooq.api_key"))
+                .map(|r| r.0);
+            let ctx = quote::Ctx::new(&ep, key.as_deref());
+            match q {
+                QuoteCmd::Get { symbols, backend } => {
+                    quote::run_get(&ctx, &quote::GetArgs { symbols, backend })
+                }
+                QuoteCmd::History {
+                    symbol,
+                    range,
+                    interval,
+                    backend,
+                    save,
+                } => quote::run_history(
+                    store,
+                    &ctx,
+                    &quote::HistoryArgs {
+                        symbol,
+                        range,
+                        interval,
+                        backend,
+                        save,
+                    },
+                ),
+                QuoteCmd::Search { query, limit } => {
+                    quote::run_search(&ctx, &quote::SearchArgs { query, limit })
+                }
+            }
+        }
+        Cmd::Market(m) => {
+            let ep = market::Endpoints::from_env();
+            let ctx = market::Ctx::new(&ep);
+            match m {
+                MarketCmd::Search {
+                    query,
+                    limit,
+                    active,
+                    closed,
+                    sort,
+                    tag,
+                    save_table,
+                } => market::run_search(
+                    store,
+                    &ctx,
+                    &market::SearchArgs {
+                        query,
+                        limit,
+                        active,
+                        closed,
+                        sort,
+                        tag,
+                        save_table,
+                    },
+                ),
+                MarketCmd::Get { id, limit } => market::run_get(&ctx, &id, limit),
+                MarketCmd::Trending {
+                    limit,
+                    tag,
+                    save_table,
+                } => market::run_trending(
+                    store,
+                    &ctx,
+                    &market::TrendingArgs {
+                        limit,
+                        tag,
+                        save_table,
+                    },
+                ),
+                MarketCmd::History { id, interval, save } => market::run_history(
+                    store,
+                    &ctx,
+                    &market::HistoryArgs {
+                        target: id,
+                        interval,
+                        save,
+                    },
+                ),
+            }
+        }
         Cmd::Report(ReportCmd::Build {
             title,
             template,

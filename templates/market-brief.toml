@@ -1,0 +1,32 @@
+# Prediction-market briefing (e.g. Polymarket): one numbered section per market.
+# Each item must state the current probability as a percentage and link the
+# market on polymarket.com. Count set with --n (default 3).
+name = "market-brief"
+description = "Market briefing: H1 title, Overview, exactly N '## {n}. Market' sections each with a probability % and a polymarket.com link, Sources."
+title_level = 1
+min_words = 120
+max_words = 1500
+citation_style = "inline-link"
+require_sources_section = true
+sources_heading = "Sources"
+sources_level = 2
+min_sources = 3
+forbid = ["As an AI", "as a language model", "guaranteed to"]
+
+[[section]]
+heading = "Overview"
+level = 2
+min_words = 25
+max_words = 150
+hint = "What the markets cover, the date/time of the snapshot, and the headline takeaway. Probabilities are market prices, not forecasts."
+keywords = ["overview", "summary"]
+
+[[section]]
+heading = "{n}. {title}"
+level = 2
+repeat_min = 3
+repeat_max = 3
+min_words = 30
+require_citation = true
+must_contain = ["%", "polymarket.com"]
+hint = "Market question in the heading. Give the current probability (e.g. 62%), its recent move (e.g. +5 pts this week), 24h volume and end date, and link the market as ([polymarket.com](https://polymarket.com/event/<slug>))."
