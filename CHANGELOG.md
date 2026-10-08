@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### 新增
+
+- Skill 的 `metadata.openclaw.install` 加上 Linux／Windows 的下載安裝項目（指向 v0.2.0 release 壓縮檔並固定 sha256），並以 `envVars` 宣告選用的 `TAVILY_API_KEY`、`STOOQ_API_KEY`、`AGENTBOX_HOME`，方便發布到 ClawHub。
+- README 新增「安裝」一節（含 macOS 從原始碼建置）與 OpenClaw 下載安裝後的 PATH 設定說明。
+
 ## [0.2.0] - 2026-10-08
 
 讓小模型 agent 真的會用 agentbox：附上 Agent Skill，並補上幾個讓模型少犯 shell 錯誤的功能。

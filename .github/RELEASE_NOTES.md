@@ -34,7 +34,7 @@ Move-Item -Force "agentbox-$v-x86_64-pc-windows-msvc\agentbox.exe" $dir
 [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$dir", "User")
 ```
 
-無法直接下載時（例如 repo 尚未公開），可改用 GitHub CLI：`gh release download {{VERSION}} -R alex-ht/agentbox`。
+也可以改用 GitHub CLI 下載：`gh release download {{VERSION}} -R alex-ht/agentbox`。
 
 Windows 執行檔已靜態連結 C 執行階段，不需要另外安裝 VC++ 可轉散發套件。下載後可用文末的 SHA256 驗證（Linux：`sha256sum -c SHA256SUMS.txt --ignore-missing`；PowerShell：`Get-FileHash agentbox.zip`）。
 

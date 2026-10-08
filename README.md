@@ -18,6 +18,37 @@
 - **說明簡短**：每個子命令的 `--help` 只有幾行，附 1–2 個範例，小模型讀得完。
 - **可直接接進 agent 框架**：`agentbox schema` 輸出 OpenAI 風格的 function tool JSON schema，每個子命令都能當成獨立工具；`agentbox call <name> '<json>'` 再把工具呼叫轉回命令列執行。
 
+## 安裝
+
+預先建置好的執行檔放在 [GitHub Releases](https://github.com/alex-ht/agentbox/releases)，目前有 Linux x86_64（musl 完全靜態）與 Windows x86_64 兩種；每個版本都附 `SHA256SUMS.txt`。
+
+**Linux**
+
+```bash
+v=v0.2.0
+curl -LO "https://github.com/alex-ht/agentbox/releases/download/$v/agentbox-$v-x86_64-unknown-linux-musl.tar.gz"
+curl -LO "https://github.com/alex-ht/agentbox/releases/download/$v/SHA256SUMS.txt"
+sha256sum -c SHA256SUMS.txt --ignore-missing
+tar -xzf "agentbox-$v-x86_64-unknown-linux-musl.tar.gz"
+mkdir -p ~/.local/bin && mv "agentbox-$v-x86_64-unknown-linux-musl/agentbox" ~/.local/bin/
+agentbox --version    # 找不到命令時：export PATH="$HOME/.local/bin:$PATH"
+```
+
+**Windows（PowerShell）**
+
+```powershell
+$v = "v0.2.0"
+Invoke-WebRequest "https://github.com/alex-ht/agentbox/releases/download/$v/agentbox-$v-x86_64-pc-windows-msvc.zip" -OutFile agentbox.zip
+Get-FileHash agentbox.zip    # 和 SHA256SUMS.txt 比對
+Expand-Archive agentbox.zip -DestinationPath .
+$dir = "$env:LOCALAPPDATA\Programs\agentbox"
+New-Item -ItemType Directory -Force $dir | Out-Null
+Move-Item -Force "agentbox-$v-x86_64-pc-windows-msvc\agentbox.exe" $dir
+[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$dir", "User")
+```
+
+**macOS**：目前沒有預先建置的執行檔，CI 也沒有在 macOS 上測試。裝好 Rust 1.85 以上後可以從原始碼建置：`cargo install --git https://github.com/alex-ht/agentbox --tag v0.2.0 --locked`。
+
 ## 子命令
 
 | 子命令 | 用途 | 狀態 |
@@ -377,6 +408,25 @@ agentbox skill install --dir ~/my-openclaw-workspace/skills --apply   # 指定 O
 ```
 
 也可以直接複製資料夾：把 `skills/agentbox` 整個複製到 `~/.agents/skills/agentbox`，或 OpenClaw workspace 的 `skills/agentbox`。release 壓縮檔裡也附了同一份 `skills/` 資料夾。複製後開一個新的 agent session，skill 才會載入。OpenClaw 會依 `metadata.openclaw.requires.bins` 檢查 PATH 上有沒有 `agentbox`，找不到時不會載入這個 skill。
+
+### 透過 OpenClaw／ClawHub 安裝
+
+`SKILL.md` 的 `metadata.openclaw.install` 宣告了 Linux 與 Windows 兩個下載安裝項目：OpenClaw 會從 GitHub Releases 下載對應版本的壓縮檔，先比對寫死在 frontmatter 裡的 sha256，再解壓到 `~/.openclaw/tools/agentbox/bin/`（有設定 `OPENCLAW_STATE_DIR` 時是 `$OPENCLAW_STATE_DIR/tools/agentbox/bin/`）。
+
+OpenClaw 只會在 PATH 裡找 `requires.bins`，不會自動把這個資料夾加進 PATH，所以裝完要自己加一次，再開新的 session：
+
+```bash
+# Linux（寫進 ~/.bashrc 或 ~/.profile）
+export PATH="$HOME/.openclaw/tools/agentbox/bin:$PATH"
+```
+
+```powershell
+# Windows
+$dir = "$env:USERPROFILE\.openclaw\tools\agentbox\bin"
+[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$dir", "User")
+```
+
+已經用上面「安裝」一節把 `agentbox` 放進 PATH 的話，就不需要再跑 OpenClaw 的安裝項目。macOS 沒有下載項目，請從原始碼建置。
 
 skill 裡的每一行 `agentbox ...` 範例都會在測試中用真正的命令列定義解析一次（`cargo test skill`），範例和實際旗標不一致時 CI 會失敗。
 

@@ -10,7 +10,7 @@ description: >
   facts from the web, current numbers, citations, a report file, or a file
   edit. Do not use for small talk, opinions, or answers that need no source,
   and not for trivial math that does not go into an answer.
-compatibility: Requires the `agentbox` binary (v0.2.0+) on PATH. Needs network access for search, fetch, quote and market. Optional TAVILY_API_KEY gives better search; without it agentbox uses keyless DuckDuckGo/Bing.
+compatibility: Requires the `agentbox` binary (v0.2.0+) on PATH. Prebuilt for Linux and Windows x86_64; build from source on macOS. Needs network access for search, fetch, quote and market. Optional TAVILY_API_KEY gives better search; without it agentbox uses keyless DuckDuckGo/Bing.
 metadata:
   author: alex-ht
   version: "0.2.0"
@@ -26,6 +26,43 @@ metadata:
       - linux
       - darwin
       - win32
+    envVars:
+      - name: TAVILY_API_KEY
+        required: false
+        description: Optional Tavily API key for better web search (needs a Tavily account; Tavily has a free monthly quota and paid plans). Without it agentbox uses keyless DuckDuckGo/Bing. Set by the human, never by the agent.
+      - name: STOOQ_API_KEY
+        required: false
+        description: Optional Stooq key, only for `quote --backend stooq` price history. Not needed by default.
+      - name: AGENTBOX_HOME
+        required: false
+        description: Optional state directory for saved pages, notes, tables and config. Default ~/.agentbox.
+    install:
+      - id: download-linux
+        kind: download
+        label: Download agentbox v0.2.0 (Linux x86_64, static musl) from GitHub Releases
+        url: https://github.com/alex-ht/agentbox/releases/download/v0.2.0/agentbox-v0.2.0-x86_64-unknown-linux-musl.tar.gz
+        sha256: 904b3ece7c90b65679dd7fb40eb3ae1b4b6cef2f9164f280ac57b697d6b75694
+        archive: tar.gz
+        extract: true
+        stripComponents: 1
+        targetDir: bin
+        bins:
+          - agentbox
+        os:
+          - linux
+      - id: download-windows
+        kind: download
+        label: Download agentbox v0.2.0 (Windows x86_64) from GitHub Releases
+        url: https://github.com/alex-ht/agentbox/releases/download/v0.2.0/agentbox-v0.2.0-x86_64-pc-windows-msvc.zip
+        sha256: 841996ce7ac761f48e0c11005c7702e75db26a1786aa59650fc05117e54289a8
+        archive: zip
+        extract: true
+        stripComponents: 1
+        targetDir: bin
+        bins:
+          - agentbox
+        os:
+          - win32
 ---
 
 # agentbox
@@ -171,3 +208,20 @@ Open a reference file (relative to this skill folder) only when you need it:
 - [ ] The requested file exists at the requested path (check with `agentbox file read report.md --lines 1:20`).
 - [ ] If you wrote a report: `report check` returned `pass: true` and no `<!-- TODO` or `<!-- NOTES` blocks remain.
 - [ ] The final answer is short, in your own words, and lists its sources.
+
+## Setup and safety (for the human operator)
+
+- Install: the OpenClaw download installer fetches the v0.2.0 release archive from
+  GitHub Releases, checks its pinned sha256, and extracts it to `~/.openclaw/tools/agentbox/bin/`.
+  OpenClaw only finds binaries on PATH, so add that folder to PATH
+  (Linux: `export PATH="$HOME/.openclaw/tools/agentbox/bin:$PATH"`;
+  Windows: add `%USERPROFILE%\.openclaw\tools\agentbox\bin` to the user Path), then start a new session.
+- macOS has no prebuilt binary. Build from source (Rust 1.85+):
+  `cargo install --git https://github.com/alex-ht/agentbox --tag v0.2.0 --locked`.
+- Network: `search` calls api.tavily.com (only with a key), html.duckduckgo.com or bing.com;
+  `quote` calls finance.yahoo.com or stooq.com; `market` calls polymarket.com;
+  `fetch`/`extract` read only the URLs the agent passes.
+- Keys are optional and set by the human (env `TAVILY_API_KEY`, or `agentbox config set` run by the human).
+  agentbox never prints a key; `config get` shows it masked.
+- Local writes: state goes to `~/.agentbox` (or `AGENTBOX_HOME`). `file` edits and `report build`
+  only preview until `--apply` is given. No scripts run; this skill folder holds Markdown and one TOML sample.

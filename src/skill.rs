@@ -228,6 +228,15 @@ mod tests {
         let urls = vals("url:");
         let sums = vals("sha256:");
         assert_eq!(urls.len(), sums.len(), "every download needs a sha256");
+        for target in [
+            "x86_64-unknown-linux-musl.tar.gz",
+            "x86_64-pc-windows-msvc.zip",
+        ] {
+            assert!(
+                urls.iter().any(|u| u.ends_with(target)),
+                "no installer for {target}"
+            );
+        }
         let prefix = format!(
             "https://github.com/alex-ht/agentbox/releases/download/v{ver}/agentbox-v{ver}-"
         );
