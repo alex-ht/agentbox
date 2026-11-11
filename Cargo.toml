@@ -24,6 +24,9 @@ html5ever = "0.27"
 markup5ever_rcdom = "0.3"
 toml = { version = "0.9", default-features = false, features = ["std", "parse", "serde"] }
 regex = "1"
+rusqlite = { version = "0.40.2", default-features = false, features = ["bundled"] }
+psl = "2.1.251"
+flate2 = { version = "1.1.11", default-features = false, features = ["rust_backend"] }
 
 [dev-dependencies]
 tempfile = "3"

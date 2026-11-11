@@ -6,6 +6,7 @@ mod config;
 mod dom;
 mod envelope;
 mod extract;
+mod kb;
 mod markdown;
 mod market;
 mod net;
@@ -21,7 +22,7 @@ mod testutil;
 
 use clap::Parser;
 use cli::{
-    Cli, Cmd, ConfigCmd, FileCmd, Format, MarketCmd, NoteCmd, QuoteCmd, ReportCmd, SkillCmd,
+    Cli, Cmd, ConfigCmd, FileCmd, Format, KbCmd, MarketCmd, NoteCmd, QuoteCmd, ReportCmd, SkillCmd,
     TableCmd, TemplateCmd,
 };
 use envelope::{envelope, AppError, CmdResult};
@@ -174,6 +175,50 @@ fn dispatch(cmd: Cmd, store: &Store) -> CmdResult {
             cmd::note::list(store, tag.as_deref(), grep.as_deref(), limit)
         }
         Cmd::Note(NoteCmd::Clear { tag, apply }) => cmd::note::clear(store, tag.as_deref(), apply),
+        Cmd::Kb(KbCmd::Search {
+            query,
+            category,
+            kind,
+            limit,
+        }) => kb::run_search(
+            store,
+            &kb::SearchArgs {
+                query,
+                category,
+                kind,
+                limit,
+            },
+        ),
+        Cmd::Kb(KbCmd::Get { id }) => kb::run_get(store, &id),
+        Cmd::Kb(KbCmd::Open { id, which }) => kb::run_open(store, &id, &which),
+        Cmd::Kb(KbCmd::Import {
+            curated,
+            curated_file,
+            services,
+            replace,
+            crux,
+            scope,
+            max_rank,
+            verify,
+            enrich,
+            write_seed,
+            popular,
+        }) => kb::run_import(
+            store,
+            &kb::ImportArgs {
+                curated,
+                curated_file,
+                services,
+                replace,
+                crux,
+                scope,
+                max_rank,
+                verify,
+                enrich,
+                write_seed,
+                popular,
+            },
+        ),
         Cmd::Search {
             query,
             max_results,
@@ -445,12 +490,16 @@ fn call(name: &str, raw: &str, store: &Store) -> CmdResult {
     })?;
     if matches!(
         cli.cmd,
-        Cmd::Call { .. } | Cmd::Schema { .. } | Cmd::Config(_) | Cmd::Skill(_)
+        Cmd::Call { .. }
+            | Cmd::Schema { .. }
+            | Cmd::Config(_)
+            | Cmd::Skill(_)
+            | Cmd::Kb(KbCmd::Import { .. })
     ) {
         return Err(AppError::new(
             "bad_args",
-            "call cannot run call, schema, config or skill",
-            "Call a regular tool name.",
+            "call cannot run call, schema, config, skill or kb import",
+            "Call a regular tool name. `kb import` is a human setup command.",
         ));
     }
     dispatch(cli.cmd, store)

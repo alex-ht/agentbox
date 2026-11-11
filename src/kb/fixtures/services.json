@@ -1,0 +1,29 @@
+[
+  {
+    "服務代碼": "TAX-TEST-1",
+    "標題": "綜合所得稅結算申報",
+    "線上申辦_服務內容": "辦理綜合所得稅結算申報。",
+    "線上申辦連結": "https://www.etax.nat.gov.tw/etwmain/",
+    "頁面連結": "https://www.gov.tw/News_Content_2_tax.html",
+    "單位OID": "1.2.3"
+  },
+  {
+    "服務代碼": "HH-TEST-1",
+    "標題": "國民身分證補發",
+    "臨櫃_服務內容": "國民身分證遺失補發，向戶政事務所申請。",
+    "臨櫃_表單下載連結": "https://www.ris.gov.tw/app/portal/163",
+    "頁面連結": "https://www.gov.tw/News_Content_2_id.html"
+  },
+  {
+    "服務代碼": "A01040000A-1$font$",
+    "標題": "替代役基礎訓練已訓證明書補發申請",
+    "電郵傳真_服務內容": "遺失證明書欲申請補發。",
+    "電郵傳真_連結": "https://dca.moi.gov.tw/chaspx/News_Detail.aspx?web=17&id=9460",
+    "頁面連結": "https://www.gov.tw/News_Content_2_371248.html"
+  },
+  {
+    "服務代碼": "SKIP-NO-URL",
+    "標題": "沒有連結的服務",
+    "線上申辦_服務內容": "這筆沒有任何網址，必須略過。"
+  }
+]

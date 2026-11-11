@@ -3,7 +3,7 @@
 //! Success: `{"ok":true,"data":...,"hint":null}`
 //! Failure: `{"ok":false,"error":{"code":...,"message":...},"hint":"..."}`
 
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::fmt;
 
 /// Successful command output: payload plus an optional next-step hint.
@@ -30,6 +30,9 @@ pub struct AppError {
     pub code: &'static str,
     pub message: String,
     pub hint: String,
+    /// Extra keys merged into `error` after `code` and `message`.
+    /// Boxed so `AppError` stays small enough for `Result`.
+    pub details: Option<Box<Value>>,
 }
 
 impl AppError {
@@ -38,7 +41,14 @@ impl AppError {
             code,
             message: message.into(),
             hint: hint.into(),
+            details: None,
         }
+    }
+
+    /// Attach extra error fields (for example the known official URL when a fetch is blocked).
+    pub fn with_details(mut self, details: Value) -> Self {
+        self.details = Some(Box::new(details));
+        self
     }
 
     /// Wrap an I/O error with context about what was being done.
@@ -70,11 +80,23 @@ pub type CmdResult = Result<Output, AppError>;
 pub fn envelope(res: &CmdResult) -> Value {
     match res {
         Ok(out) => json!({ "ok": true, "data": out.data, "hint": out.hint }),
-        Err(e) => json!({
-            "ok": false,
-            "error": { "code": e.code, "message": e.message },
-            "hint": e.hint,
-        }),
+        Err(e) => {
+            let mut error = Map::new();
+            error.insert("code".into(), json!(e.code));
+            error.insert("message".into(), json!(e.message));
+            if let Some(extra) = e.details.as_deref().and_then(Value::as_object) {
+                for (k, v) in extra {
+                    if k != "code" && k != "message" {
+                        error.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+            json!({
+                "ok": false,
+                "error": Value::Object(error),
+                "hint": e.hint,
+            })
+        }
     }
 }
 
@@ -96,6 +118,17 @@ mod tests {
         assert_eq!(
             s,
             r#"{"ok":false,"error":{"code":"bad","message":"boom"},"hint":"try again"}"#
+        );
+    }
+
+    #[test]
+    fn error_details_follow_code_and_message() {
+        let res: CmdResult = Err(AppError::new("fetch_blocked", "nope", "retry")
+            .with_details(json!({"id": "org:nhi", "official_url": "https://www.nhi.gov.tw"})));
+        let s = serde_json::to_string(&envelope(&res)).unwrap();
+        assert_eq!(
+            s,
+            r#"{"ok":false,"error":{"code":"fetch_blocked","message":"nope","id":"org:nhi","official_url":"https://www.nhi.gov.tw"},"hint":"retry"}"#
         );
     }
 }

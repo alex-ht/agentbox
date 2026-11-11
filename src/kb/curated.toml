@@ -1,0 +1,1407 @@
+# Curated official entrances for kb v1. Verified 2026-11-11.
+# Only URLs that were checked (verified / connected / blocked) belong here.
+# Do not add hosts that failed to connect.
+
+[[org]]
+id = "org:gov"
+name_zh = "我的E政府"
+name_en = "My E-Government"
+aliases = ["我的E政府", "e政府", "政府入口網"]
+category = "portal"
+official_url = "https://www.gov.tw"
+description = "政府線上服務總入口。data.gov.tw 資料集 146973 的相關網址。"
+verify_status = "connected"
+
+[[org]]
+id = "org:gov-service"
+name_zh = "政府服務網"
+aliases = ["政府服務網", "服務網"]
+category = "portal"
+official_url = "https://www.service.gov.tw"
+description = "政府服務網入口。"
+verify_status = "connected"
+
+[[org]]
+id = "org:taiwan"
+name_zh = "中華民國政府入口網"
+name_en = "Government Portal of the Republic of China (Taiwan)"
+aliases = ["taiwan.gov.tw", "政府入口網英文"]
+category = "portal"
+official_url = "https://www.taiwan.gov.tw"
+description = "中華民國政府入口網（英文）。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ey"
+name_zh = "行政院"
+name_en = "Executive Yuan"
+aliases = ["行政院"]
+category = "portal"
+official_url = "https://www.ey.gov.tw"
+description = "行政院全球資訊網。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ris"
+name_zh = "內政部戶政司"
+name_en = "Department of Household Registration"
+aliases = ["戶政", "戶政司", "身分證", "國民身分證", "戶籍"]
+category = "household"
+official_url = "https://www.ris.gov.tw"
+description = "戶政、國民身分證與戶籍登記。"
+verify_status = "connected"
+
+[[org]]
+id = "org:moi"
+name_zh = "內政部"
+name_en = "Ministry of the Interior"
+aliases = ["內政部"]
+category = "household"
+official_url = "https://www.moi.gov.tw"
+description = "內政部全球資訊網。"
+verify_status = "connected"
+
+[[org]]
+id = "org:immigration"
+name_zh = "內政部移民署"
+aliases = ["移民署", "入出國", "居留"]
+category = "household"
+official_url = "https://www.immigration.gov.tw"
+description = "入出國、移民與居留。"
+verify_status = "connected"
+
+[[org]]
+id = "org:land"
+name_zh = "內政部地政司"
+name_en = "Department of Land Administration"
+aliases = ["地政", "地政司"]
+category = "household"
+official_url = "https://www.land.moi.gov.tw"
+description = "地政司全球資訊網。"
+verify_status = "verified"
+
+[[org]]
+id = "org:moica"
+name_zh = "自然人憑證"
+name_en = "MOICA"
+aliases = ["自然人憑證", "MOICA"]
+category = "household"
+official_url = "https://moica.nat.gov.tw"
+description = "內政部憑證管理中心，自然人憑證。"
+verify_status = "connected"
+
+[[org]]
+id = "org:boca"
+name_zh = "外交部領事事務局"
+name_en = "Bureau of Consular Affairs"
+aliases = ["領事事務局", "護照"]
+category = "household"
+official_url = "https://www.boca.gov.tw"
+description = "護照與領事事務。"
+verify_status = "verified"
+
+[[org]]
+id = "org:mofa"
+name_zh = "外交部"
+name_en = "Ministry of Foreign Affairs"
+aliases = ["外交部"]
+category = "household"
+official_url = "https://www.mofa.gov.tw"
+description = "中華民國外交部。"
+verify_status = "verified"
+
+[[org]]
+id = "org:nhi"
+name_zh = "衛生福利部中央健康保險署"
+name_en = "National Health Insurance Administration"
+aliases = ["健保", "健保署", "中央健康保險署", "NHI"]
+category = "nhi"
+official_url = "https://www.nhi.gov.tw"
+description = "全民健康保險官方網站。2026-11-11 核對時被 Cloudflare 擋住，內文未驗證。回答前必須先成功開啟頁面，不可用記憶補內容。"
+verify_status = "blocked"
+
+[[org]]
+id = "org:mohw"
+name_zh = "衛生福利部"
+name_en = "Ministry of Health and Welfare"
+aliases = ["衛福部", "衛生福利部"]
+category = "nhi"
+official_url = "https://www.mohw.gov.tw"
+description = "衛生福利部全球資訊網。"
+verify_status = "connected"
+
+[[org]]
+id = "org:hpa"
+name_zh = "衛生福利部國民健康署"
+name_en = "Health Promotion Administration"
+aliases = ["國健署", "國民健康署"]
+category = "nhi"
+official_url = "https://www.hpa.gov.tw"
+description = "國民健康署。"
+verify_status = "verified"
+
+[[org]]
+id = "org:etax"
+name_zh = "財政部稅務入口網"
+name_en = "Ministry of Finance Tax Portal"
+aliases = ["報稅", "所得稅", "綜所稅", "網路報稅", "稅務入口網"]
+category = "tax"
+official_url = "https://www.etax.nat.gov.tw/etwmain/"
+description = "綜合所得稅等網路報稅入口。根路徑會轉到 /etwmain。"
+verify_status = "verified"
+
+[[org]]
+id = "org:mof"
+name_zh = "財政部"
+name_en = "Ministry of Finance"
+aliases = ["財政部"]
+category = "tax"
+official_url = "https://www.mof.gov.tw"
+description = "財政部全球資訊網。"
+verify_status = "connected"
+
+[[org]]
+id = "org:fia"
+name_zh = "財政部賦稅署"
+aliases = ["賦稅署"]
+category = "tax"
+official_url = "https://www.fia.gov.tw"
+description = "財政部賦稅署。"
+verify_status = "connected"
+
+[[org]]
+id = "org:ntbt"
+name_zh = "財政部臺北國稅局"
+aliases = ["臺北國稅局", "台北國稅局"]
+category = "tax"
+official_url = "https://www.ntbt.gov.tw"
+description = "財政部臺北國稅局。不是北區國稅局。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ntbna"
+name_zh = "財政部北區國稅局"
+aliases = ["北區國稅局"]
+category = "tax"
+official_url = "https://www.ntbna.gov.tw"
+description = "財政部北區國稅局。不是臺北國稅局。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ntbca"
+name_zh = "財政部中區國稅局"
+aliases = ["中區國稅局"]
+category = "tax"
+official_url = "https://www.ntbca.gov.tw"
+description = "財政部中區國稅局。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ntbsa"
+name_zh = "財政部南區國稅局"
+aliases = ["南區國稅局"]
+category = "tax"
+official_url = "https://www.ntbsa.gov.tw"
+description = "財政部南區國稅局。"
+verify_status = "verified"
+
+[[org]]
+id = "org:mvdis"
+name_zh = "公路監理服務網"
+aliases = ["監理", "監理所", "駕照", "汽車監理"]
+category = "motor"
+official_url = "https://www.mvdis.gov.tw"
+description = "公路監理、駕照與行照服務。"
+verify_status = "connected"
+
+[[org]]
+id = "org:thb"
+name_zh = "交通部公路局"
+aliases = ["公路局"]
+category = "motor"
+official_url = "https://www.thb.gov.tw"
+description = "交通部公路局。"
+verify_status = "connected"
+
+[[org]]
+id = "org:motc"
+name_zh = "交通部"
+name_en = "Ministry of Transportation and Communications"
+aliases = ["交通部"]
+category = "motor"
+official_url = "https://www.motc.gov.tw"
+description = "交通部全球資訊網。"
+verify_status = "connected"
+
+[[org]]
+id = "org:mol"
+name_zh = "勞動部"
+name_en = "Ministry of Labor"
+aliases = ["勞動部"]
+category = "labor"
+official_url = "https://www.mol.gov.tw"
+description = "勞動部全球資訊網。"
+verify_status = "connected"
+
+[[org]]
+id = "org:bli"
+name_zh = "勞動部勞工保險局"
+aliases = ["勞保局", "勞保", "勞工保險局", "勞工保險"]
+category = "labor"
+official_url = "https://www.bli.gov.tw"
+description = "勞工保險與勞保給付。"
+verify_status = "connected"
+
+[[org]]
+id = "org:wda"
+name_zh = "勞動部勞動力發展署"
+aliases = ["勞發署", "勞動力發展署"]
+category = "labor"
+official_url = "https://www.wda.gov.tw"
+description = "勞動力發展署。"
+verify_status = "connected"
+
+[[org]]
+id = "org:taiwanjobs"
+name_zh = "台灣就業通"
+aliases = ["就業通", "台灣就業通"]
+category = "labor"
+official_url = "https://www.taiwanjobs.gov.tw"
+description = "台灣就業通。"
+verify_status = "verified"
+
+[[org]]
+id = "org:sfaa"
+name_zh = "衛生福利部社會及家庭署"
+aliases = ["社家署", "社會及家庭署", "社會福利"]
+category = "welfare"
+official_url = "https://www.sfaa.gov.tw"
+description = "社會福利與家庭服務。各項補助的申辦頁以服務清單為準，不在這裡另編網址。"
+verify_status = "connected"
+
+[[org]]
+id = "org:railway"
+name_zh = "臺灣鐵路公司"
+aliases = ["台鐵", "臺鐵", "TRA", "臺灣鐵路", "火車", "搭火車", "訂票", "時刻表"]
+category = "transport"
+official_url = "https://www.railway.gov.tw"
+description = "臺灣鐵路公司。"
+verify_status = "connected"
+
+[[org]]
+id = "org:thsrc"
+name_zh = "台灣高鐵"
+name_en = "Taiwan High Speed Rail"
+aliases = ["高鐵", "台灣高鐵", "THSRC", "THSR", "訂票", "時刻表"]
+category = "transport"
+official_url = "https://www.thsrc.com.tw"
+description = "台灣高速鐵路。"
+verify_status = "connected"
+
+[[org]]
+id = "org:metro-taipei"
+name_zh = "臺北捷運"
+aliases = ["北捷", "台北捷運", "臺北捷運"]
+category = "transport"
+official_url = "https://www.metro.taipei"
+description = "臺北大眾捷運。"
+verify_status = "connected"
+
+[[org]]
+id = "org:krtc"
+name_zh = "高雄捷運"
+aliases = ["高捷", "高雄捷運"]
+category = "transport"
+official_url = "https://www.krtc.com.tw"
+description = "高雄捷運。"
+verify_status = "connected"
+
+[[org]]
+id = "org:tymetro"
+name_zh = "桃園捷運"
+aliases = ["桃園捷運", "機捷"]
+category = "transport"
+official_url = "https://www.tymetro.com.tw"
+description = "桃園捷運。"
+verify_status = "connected"
+
+[[org]]
+id = "org:tmrt"
+name_zh = "臺中捷運"
+aliases = ["中捷", "台中捷運", "臺中捷運"]
+category = "transport"
+official_url = "https://www.tmrt.com.tw"
+description = "臺中捷運。"
+verify_status = "verified"
+
+[[org]]
+id = "org:freeway"
+name_zh = "交通部高速公路局"
+aliases = ["高公局", "高速公路局"]
+category = "transport"
+official_url = "https://www.freeway.gov.tw"
+description = "交通部高速公路局。"
+verify_status = "connected"
+
+[[org]]
+id = "org:freeway-1968"
+name_zh = "高速公路1968"
+aliases = ["1968", "高速公路1968"]
+category = "transport"
+official_url = "https://1968.freeway.gov.tw"
+description = "高速公路1968路況。官網在 freeway.gov.tw，不是其他網域。"
+verify_status = "verified"
+
+[[org]]
+id = "org:cdc"
+name_zh = "衛生福利部疾病管制署"
+aliases = ["疾管署", "疾病管制署"]
+category = "medical"
+official_url = "https://www.cdc.gov.tw"
+description = "疾病管制署。沒有已驗證的全國單一掛號入口。"
+verify_status = "connected"
+
+[[org]]
+id = "org:tph"
+name_zh = "衛生福利部臺北醫院"
+aliases = ["衛福部臺北醫院", "臺北醫院"]
+category = "medical"
+official_url = "https://www.tph.mohw.gov.tw"
+description = "衛生福利部臺北醫院。"
+verify_status = "verified"
+
+[[org]]
+id = "org:mmh"
+name_zh = "馬偕紀念醫院"
+aliases = ["馬偕", "馬偕醫院"]
+category = "medical"
+official_url = "https://www.mmh.org.tw"
+description = "馬偕紀念醫院。"
+verify_status = "verified"
+
+[[org]]
+id = "org:cgh"
+name_zh = "國泰綜合醫院"
+aliases = ["國泰醫院", "國泰綜合醫院"]
+category = "medical"
+official_url = "https://www.cgh.org.tw"
+description = "國泰綜合醫院。"
+verify_status = "verified"
+
+[[org]]
+id = "org:cgmh"
+name_zh = "長庚醫療財團法人"
+aliases = ["長庚", "長庚醫院"]
+category = "medical"
+official_url = "https://www.cgmh.org.tw"
+description = "長庚醫療財團法人。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ntuh"
+name_zh = "臺大醫院"
+aliases = ["台大醫院", "臺大醫院"]
+category = "medical"
+official_url = "https://www.ntuh.gov.tw"
+description = "國立臺灣大學醫學院附設醫院。2026-11-11 根路徑只有轉址，標題未核對。"
+verify_status = "connected"
+
+[[org]]
+id = "org:vghtpe"
+name_zh = "臺北榮民總醫院"
+aliases = ["台北榮總", "臺北榮總", "榮總"]
+category = "medical"
+official_url = "https://www.vghtpe.gov.tw"
+description = "臺北榮民總醫院。2026-11-11 根路徑只有轉址，標題未核對。"
+verify_status = "connected"
+
+[[org]]
+id = "org:kmuh"
+name_zh = "高雄醫學大學附設中和紀念醫院"
+aliases = ["高醫", "中和紀念醫院"]
+category = "medical"
+official_url = "https://www.kmuh.org.tw"
+description = "高雄醫學大學附設中和紀念醫院。"
+verify_status = "connected"
+
+[[org]]
+id = "org:taipower"
+name_zh = "台灣電力公司"
+aliases = ["台電", "電費"]
+category = "utilities"
+official_url = "https://www.taipower.com.tw"
+description = "台灣電力公司。"
+verify_status = "connected"
+
+[[org]]
+id = "org:water"
+name_zh = "台灣自來水公司"
+aliases = ["台水", "水費", "自來水"]
+category = "utilities"
+official_url = "https://www.water.gov.tw"
+description = "台灣自來水公司。"
+verify_status = "connected"
+
+[[org]]
+id = "org:water-taipei"
+name_zh = "臺北自來水事業處"
+aliases = ["北水處", "台北自來水"]
+category = "utilities"
+official_url = "https://www.water.gov.taipei"
+description = "臺北自來水事業處。"
+verify_status = "connected"
+
+[[org]]
+id = "org:cpc"
+name_zh = "台灣中油"
+aliases = ["中油"]
+category = "utilities"
+official_url = "https://www.cpc.com.tw"
+description = "台灣中油。"
+verify_status = "connected"
+
+[[org]]
+id = "org:taipeigas"
+name_zh = "大台北區瓦斯"
+aliases = ["大台北瓦斯", "瓦斯費", "瓦斯"]
+category = "utilities"
+official_url = "https://www.taipeigas.com.tw"
+description = "大台北區瓦斯，供應臺北市天然氣。"
+verify_status = "verified"
+
+[[org]]
+id = "org:cht"
+name_zh = "中華電信"
+aliases = ["中華電信"]
+category = "utilities"
+official_url = "https://www.cht.com.tw"
+description = "中華電信。"
+verify_status = "connected"
+
+[[org]]
+id = "org:taiwanmobile"
+name_zh = "台灣大哥大"
+aliases = ["台哥大", "台灣大哥大"]
+category = "utilities"
+official_url = "https://www.taiwanmobile.com"
+description = "台灣大哥大。"
+verify_status = "connected"
+
+[[org]]
+id = "org:fetnet"
+name_zh = "遠傳電信"
+aliases = ["遠傳"]
+category = "utilities"
+official_url = "https://www.fetnet.net"
+description = "遠傳電信。"
+verify_status = "connected"
+
+[[org]]
+id = "org:ncc"
+name_zh = "國家通訊傳播委員會"
+name_en = "National Communications Commission"
+aliases = ["NCC", "通傳會"]
+category = "utilities"
+official_url = "https://www.ncc.gov.tw"
+description = "國家通訊傳播委員會。2026-11-11 核對時被 Cloudflare 擋住，內文未驗證。"
+verify_status = "blocked"
+
+[[org]]
+id = "org:post"
+name_zh = "中華郵政"
+aliases = ["郵局", "中華郵政"]
+category = "post"
+official_url = "https://www.post.gov.tw"
+description = "中華郵政。"
+verify_status = "connected"
+
+[[org]]
+id = "org:cwa-opendata"
+name_zh = "氣象資料開放平台"
+aliases = ["氣象開放資料", "氣象資料"]
+category = "weather"
+official_url = "https://opendata.cwa.gov.tw"
+description = "中央氣象署氣象資料開放平台。一般天氣預報首頁是 org:cwa 的 www.cwa.gov.tw。"
+verify_status = "verified"
+
+[[org]]
+id = "org:nfa"
+name_zh = "內政部消防署"
+name_en = "National Fire Agency"
+aliases = ["消防署"]
+category = "weather"
+official_url = "https://www.nfa.gov.tw"
+description = "內政部消防署。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ncdr"
+name_zh = "國家災害防救科技中心"
+aliases = ["災害防救", "NCDR"]
+category = "weather"
+official_url = "https://www.ncdr.nat.gov.tw"
+description = "國家災害防救科技中心。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ncdr-alerts"
+name_zh = "防災告警"
+aliases = ["防災告警", "CAP"]
+category = "weather"
+official_url = "https://alerts.ncdr.nat.gov.tw"
+description = "國家災害防救科技中心的 CAP 告警頁。2026-11-11 已連上，標題只有 cap，還不能當成一般民眾入口。"
+verify_status = "connected"
+
+[[org]]
+id = "org:einvoice"
+name_zh = "電子發票整合服務平台"
+aliases = ["電子發票", "發票載具", "載具"]
+category = "consumer"
+official_url = "https://www.einvoice.nat.gov.tw"
+description = "財政部電子發票整合服務平台。"
+verify_status = "verified"
+
+[[org]]
+id = "org:invoice"
+name_zh = "財政部稅務入口網（發票）"
+aliases = ["發票", "雲端發票"]
+category = "consumer"
+official_url = "https://invoice.etax.nat.gov.tw"
+description = "財政部稅務入口網的發票頁。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ftc"
+name_zh = "公平交易委員會"
+name_en = "Fair Trade Commission"
+aliases = ["公平會"]
+category = "consumer"
+official_url = "https://www.ftc.gov.tw"
+description = "公平交易委員會。"
+verify_status = "verified"
+
+[[org]]
+id = "org:moea"
+name_zh = "經濟部"
+name_en = "Ministry of Economic Affairs"
+aliases = ["經濟部"]
+category = "consumer"
+official_url = "https://www.moea.gov.tw"
+description = "中華民國經濟部。"
+verify_status = "verified"
+
+[[org]]
+id = "org:711"
+name_zh = "7-ELEVEN"
+aliases = ["7-11", "7-ELEVEN", "統一超商", "小七"]
+category = "consumer"
+official_url = "https://www.7-11.com.tw"
+description = "統一超商官方網站（民間）。只收錄官方網址，不快取全文。"
+verify_status = "verified"
+
+[[org]]
+id = "org:familymart"
+name_zh = "全家便利商店"
+aliases = ["全家", "FamilyMart"]
+category = "consumer"
+official_url = "https://www.family.com.tw"
+description = "全家便利商店官方網站（民間）。"
+verify_status = "verified"
+
+[[org]]
+id = "org:okmart"
+name_zh = "OK超商"
+aliases = ["OK超商", "OK MART"]
+category = "consumer"
+official_url = "https://www.okmart.com.tw"
+description = "OK 超商官方網站（民間）。"
+verify_status = "verified"
+
+[[org]]
+id = "org:hilife"
+name_zh = "萊爾富"
+aliases = ["萊爾富"]
+category = "consumer"
+official_url = "https://www.hilife.com.tw"
+description = "萊爾富官方網站（民間）。2026-11-11 核對時 HTTP 403，內文未驗證。"
+verify_status = "blocked"
+
+[[org]]
+id = "org:momo"
+name_zh = "momo"
+aliases = ["momo", "momo購物"]
+category = "consumer"
+official_url = "https://www.momo.com.tw"
+description = "momo 官方網站（民間）。2026-11-11 核對時被擋住，內文未驗證。"
+verify_status = "blocked"
+
+[[org]]
+id = "org:pchome"
+name_zh = "PChome 24h購物"
+aliases = ["PChome", "24h購物"]
+category = "consumer"
+official_url = "https://24h.pchome.com.tw"
+description = "PChome 24h 購物官方網站（民間）。"
+verify_status = "verified"
+
+[[org]]
+id = "org:shopee"
+name_zh = "Shopee 台灣"
+aliases = ["蝦皮", "Shopee"]
+category = "consumer"
+official_url = "https://shopee.tw"
+description = "Shopee 台灣官方網站（民間）。"
+verify_status = "connected"
+
+[[org]]
+id = "org:fsc"
+name_zh = "金融監督管理委員會"
+name_en = "Financial Supervisory Commission"
+aliases = ["金管會"]
+category = "finance"
+official_url = "https://www.fsc.gov.tw"
+description = "金融監督管理委員會。"
+verify_status = "verified"
+
+[[org]]
+id = "org:banking"
+name_zh = "金管會銀行局"
+name_en = "Banking Bureau"
+aliases = ["銀行局"]
+category = "finance"
+official_url = "https://www.banking.gov.tw"
+description = "金管會銀行局。"
+verify_status = "verified"
+
+[[org]]
+id = "org:cbc"
+name_zh = "中央銀行"
+name_en = "Central Bank of the Republic of China (Taiwan)"
+aliases = ["央行", "中央銀行"]
+category = "finance"
+official_url = "https://www.cbc.gov.tw"
+description = "中央銀行。"
+verify_status = "verified"
+
+[[org]]
+id = "org:fisc"
+name_zh = "財金資訊公司"
+aliases = ["財金", "財金資訊"]
+category = "finance"
+official_url = "https://www.fisc.com.tw"
+description = "財金資訊股份有限公司。"
+verify_status = "verified"
+
+[[org]]
+id = "org:taiwanpay"
+name_zh = "台灣Pay"
+aliases = ["台灣Pay", "Taiwan Pay"]
+category = "finance"
+official_url = "https://www.taiwanpay.com.tw"
+description = "台灣 Pay。"
+verify_status = "verified"
+
+# Everyday layer checked with curl on 2026-11-11. unverified = no readable page.
+
+[[org]]
+id = "org:tdx"
+name_zh = "運輸資料流通服務"
+name_en = "Transport Data eXchange"
+aliases = ["TDX", "運輸資料", "公共運輸資料"]
+category = "transport"
+official_url = "https://tdx.transportdata.tw"
+description = "交通部運輸資料流通服務。2026-11-11 頁面標題為 TDX。"
+verify_status = "verified"
+
+[[org]]
+id = "org:bus-taipei"
+name_zh = "大臺北公車"
+aliases = ["台北公車", "臺北公車", "公車", "坐公車", "大台北公車"]
+category = "transport"
+official_url = "https://ebus.gov.taipei"
+description = "臺北市公車動態。頁面標題為大臺北公車。"
+verify_status = "verified"
+
+[[org]]
+id = "org:bus-newtaipei"
+name_zh = "新北市政府公車動態資訊系統"
+aliases = ["新北公車", "雙北公車", "公車", "坐公車"]
+category = "transport"
+official_url = "https://e-bus.ntpc.gov.tw"
+description = "公路客運資訊網列出的新北市公車動態。這次頁面標題是雙北公車無障礙。"
+verify_status = "verified"
+
+[[org]]
+id = "org:bus-taoyuan"
+name_zh = "桃園公車動態資訊"
+aliases = ["桃園公車", "公車", "坐公車"]
+category = "transport"
+official_url = "https://ebus.tycg.gov.tw"
+description = "桃園市公車動態資訊。"
+verify_status = "verified"
+
+[[org]]
+id = "org:bus-taichung"
+name_zh = "臺中公車即時動態"
+aliases = ["台中公車", "臺中公車", "公車", "坐公車"]
+category = "transport"
+official_url = "https://citybus.taichung.gov.tw"
+description = "臺中公車即時動態資訊。"
+verify_status = "verified"
+
+[[org]]
+id = "org:bus-tainan"
+name_zh = "大臺南公車"
+aliases = ["台南公車", "臺南公車", "公車", "坐公車"]
+category = "transport"
+official_url = "https://2384.tainan.gov.tw"
+description = "大台南公車。首頁會進到公車動態。"
+verify_status = "verified"
+
+[[org]]
+id = "org:bus-kaohsiung"
+name_zh = "高雄市公車動態資訊"
+aliases = ["高雄公車", "公車", "坐公車"]
+category = "transport"
+official_url = "https://ibusplus.tbkc.gov.tw/"
+description = "高雄市政府交通局首頁連結的公車動態。標題為高雄市公車動態資訊。"
+verify_status = "verified"
+
+[[org]]
+id = "org:bus-keelung"
+name_zh = "基隆市公共汽車管理處"
+aliases = ["基隆公車", "公車", "坐公車"]
+category = "transport"
+official_url = "https://www.klcba.gov.tw/"
+description = "基隆市公共汽車管理處。"
+verify_status = "verified"
+
+[[org]]
+id = "org:bus-hsinchu"
+name_zh = "竹塹交通資訊網"
+aliases = ["新竹公車", "新竹市公車", "公車", "坐公車"]
+category = "transport"
+official_url = "https://hisatisfy.hccg.gov.tw/ibusWeb/"
+description = "新竹市公車動態，公路客運資訊網所列網址。"
+verify_status = "verified"
+
+[[org]]
+id = "org:bus-hsinchu-county"
+name_zh = "新竹縣智慧公車"
+aliases = ["新竹縣公車", "公車", "坐公車"]
+category = "transport"
+official_url = "https://ibus.hsinchu.gov.tw/"
+description = "新竹縣智慧公車便民查詢。"
+verify_status = "verified"
+
+[[org]]
+id = "org:bus-changhua"
+name_zh = "彰化縣即時公車動態"
+aliases = ["彰化公車", "公車", "坐公車"]
+category = "transport"
+official_url = "https://chbus.chcg.gov.tw/"
+description = "彰化縣政府即時公車動態資訊。"
+verify_status = "verified"
+
+[[org]]
+id = "org:bus-pingtung"
+name_zh = "屏東縣公車即時動態"
+aliases = ["屏東公車", "公車", "坐公車"]
+category = "transport"
+official_url = "https://ebus.pthg.gov.tw/"
+description = "屏東縣即時交通資訊網。"
+verify_status = "verified"
+
+[[org]]
+id = "org:bus-yilan"
+name_zh = "宜蘭縣政府交通處"
+aliases = ["宜蘭交通", "宜蘭公車"]
+category = "transport"
+official_url = "https://trp.e-land.gov.tw/"
+description = "宜蘭縣政府交通處。頁面標題為交通處。"
+verify_status = "verified"
+
+[[org]]
+id = "org:youbike"
+name_zh = "YouBike微笑單車"
+aliases = ["YouBike", "Ubike", "微笑單車", "腳踏車", "共享單車"]
+category = "transport"
+official_url = "https://www.youbike.com.tw/"
+description = "YouBike 微笑單車。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ubus"
+name_zh = "統聯客運"
+aliases = ["統聯", "客運", "國道客運"]
+category = "transport"
+official_url = "https://www.ubus.com.tw/"
+description = "統聯客運。"
+verify_status = "verified"
+
+[[org]]
+id = "org:kingbus"
+name_zh = "國光客運"
+aliases = ["國光", "國光客運", "客運", "國道客運"]
+category = "transport"
+official_url = "https://www.kingbus.com.tw/"
+description = "國光客運官網網域。2026-11-11 從這台機器連線 TLS 逾時，內文未讀到。"
+verify_status = "unverified"
+
+[[org]]
+id = "org:taiwantrip"
+name_zh = "台灣好行"
+aliases = ["台灣好行", "臺灣好行", "觀光巴士"]
+category = "transport"
+official_url = "https://www.taiwantrip.com.tw/"
+description = "台灣好行旅遊服務網。"
+verify_status = "verified"
+
+[[org]]
+id = "org:taiwanbus"
+name_zh = "公路客運即時動態資訊網"
+aliases = ["公路客運", "客運動態", "國道客運"]
+category = "transport"
+official_url = "https://www.taiwanbus.tw/"
+description = "公路客運即時動態資訊網，並列出各縣市公車動態連結。"
+verify_status = "verified"
+
+[[org]]
+id = "org:airport-taoyuan"
+name_zh = "臺灣桃園國際機場"
+aliases = ["桃園機場", "桃機", "機場"]
+category = "transport"
+official_url = "https://www.taoyuan-airport.com"
+description = "桃園國際機場官網網域。2026-11-11 被 Cloudflare 擋住，內文未讀到。"
+verify_status = "unverified"
+
+[[org]]
+id = "org:airport-songshan"
+name_zh = "臺北松山機場"
+aliases = ["松山機場", "機場"]
+category = "transport"
+official_url = "https://www.tsa.gov.tw/"
+description = "臺北松山機場。頁面標題為台北松山機場。"
+verify_status = "verified"
+
+[[org]]
+id = "org:airport-kaohsiung"
+name_zh = "高雄國際航空站"
+aliases = ["高雄機場", "小港機場", "機場"]
+category = "transport"
+official_url = "https://www.kia.gov.tw/"
+description = "高雄國際航空站。"
+verify_status = "verified"
+
+[[org]]
+id = "org:airport-taichung"
+name_zh = "臺中國際機場"
+aliases = ["台中機場", "清泉崗機場", "機場"]
+category = "transport"
+official_url = "https://www.tca.gov.tw/"
+description = "臺中國際機場。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ferry-kcs"
+name_zh = "高雄市輪船公司"
+aliases = ["高雄輪船", "渡輪", "旗津渡輪", "坐船"]
+category = "transport"
+official_url = "https://kcs.kcg.gov.tw/"
+description = "高雄市輪船股份有限公司。"
+verify_status = "verified"
+
+[[org]]
+id = "org:twport"
+name_zh = "臺灣港務公司"
+aliases = ["港務公司", "港口"]
+category = "transport"
+official_url = "https://www.twport.com.tw/"
+description = "臺灣港務股份有限公司。"
+verify_status = "verified"
+
+[[org]]
+id = "org:motcmpb"
+name_zh = "交通部航港局"
+aliases = ["航港局"]
+category = "transport"
+official_url = "https://www.motcmpb.gov.tw/"
+description = "交通部航港局。"
+verify_status = "verified"
+
+[[org]]
+id = "org:penghu-transport"
+name_zh = "澎湖縣政府公共車船管理處"
+aliases = ["澎湖輪船", "澎湖公車", "坐船"]
+category = "transport"
+official_url = "https://www.penghu.gov.tw/phpto/index.jsp"
+description = "澎湖縣政府公共車船管理處。"
+verify_status = "verified"
+
+[[org]]
+id = "org:tra-book"
+name_zh = "臺鐵個人訂票"
+aliases = ["台鐵訂票", "火車訂票", "臺鐵訂票"]
+category = "transport"
+official_url = "https://www.railway.gov.tw/tra-tip-web/tip/tip001/tip121/query"
+description = "臺灣鐵路公司官網連結文字為個人訂票的頁面。"
+verify_status = "verified"
+
+[[org]]
+id = "org:tra-time"
+name_zh = "臺鐵時刻查詢"
+aliases = ["台鐵時刻表", "火車時刻", "臺鐵時刻表"]
+category = "transport"
+official_url = "https://www.railway.gov.tw/tra-tip-web/tip/tip001/tip112/gobytime"
+description = "臺灣鐵路公司官網連結文字為列車時刻/車次查詢的頁面。"
+verify_status = "verified"
+
+[[org]]
+id = "org:thsrc-time"
+name_zh = "高鐵時刻與票價"
+aliases = ["高鐵時刻表", "高鐵票價"]
+category = "transport"
+official_url = "https://www.thsrc.com.tw/ArticleContent/a3b630bb-1066-4352-a1ef-58c7b4e8ef7c"
+description = "台灣高鐵官網的時刻表與票價查詢。頁面標題含時刻表與票價查詢。"
+verify_status = "verified"
+
+[[org]]
+id = "org:thsrc-book"
+name_zh = "高鐵網路訂票"
+aliases = ["高鐵訂票"]
+category = "transport"
+official_url = "https://irs.thsrc.com.tw/IMINT/?locale=tw"
+description = "台灣高鐵官網連結文字為網路訂票。2026-11-11 HEAD 為 200，但下載內文逾時，頁面內容未讀到。"
+verify_status = "unverified"
+
+[[org]]
+id = "org:pma"
+name_zh = "臺北市停車管理工程處"
+aliases = ["停車", "停車場", "台北停車"]
+category = "transport"
+official_url = "https://pma.gov.taipei"
+description = "臺北市停車管理工程處。"
+verify_status = "verified"
+
+[[org]]
+id = "org:taipei-parking"
+name_zh = "北市好停車"
+aliases = ["好停車", "停車", "找車位"]
+category = "transport"
+official_url = "https://itaipeiparking.pma.gov.taipei/"
+description = "停管處網站連結的北市好停車。頁面標題為北市好停車。"
+verify_status = "verified"
+
+[[org]]
+id = "org:taipei-parking-fee"
+name_zh = "臺北市停車查詢一站式服務"
+aliases = ["停車費", "繳停車費"]
+category = "transport"
+official_url = "https://parkingfee.pma.gov.taipei/"
+description = "停管處網站連結的停車查詢一站式服務。"
+verify_status = "verified"
+
+[[org]]
+id = "org:taxi-55688"
+name_zh = "台灣大車隊"
+aliases = ["55688", "計程車", "叫車"]
+category = "transport"
+official_url = "https://www.55688.com.tw/"
+description = "台灣大車隊 55688。"
+verify_status = "verified"
+
+[[org]]
+id = "org:cwa"
+name_zh = "交通部中央氣象署"
+aliases = ["氣象", "天氣", "颱風", "地震", "中央氣象署", "氣象署"]
+category = "weather"
+official_url = "https://www.cwa.gov.tw"
+description = "中央氣象署首頁。2026-11-11 這台機器對首頁與 /V8/C/ 都得到 HTTP 200，標題為交通部中央氣象署。"
+verify_status = "verified"
+
+[[org]]
+id = "org:airtw"
+name_zh = "空氣品質監測網"
+aliases = ["空氣品質", "空品", "AQI", "PM2.5"]
+category = "weather"
+official_url = "https://airtw.moenv.gov.tw"
+description = "環境部空氣品質監測網。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ubereats"
+name_zh = "Uber Eats"
+aliases = ["外送", "叫外送", "Ubereats", "UberEats"]
+category = "food"
+official_url = "https://www.ubereats.com/tw"
+description = "Uber Eats 台灣外送。"
+verify_status = "verified"
+
+[[org]]
+id = "org:foodpanda"
+name_zh = "foodpanda"
+aliases = ["外送", "叫外送", "熊貓", "foodpanda"]
+category = "food"
+official_url = "https://www.foodpanda.com.tw/"
+description = "foodpanda 台灣。2026-11-11 頁面拒絕存取，內文未讀到。"
+verify_status = "unverified"
+
+[[org]]
+id = "org:inline"
+name_zh = "inline 訂位"
+aliases = ["inline", "訂位", "餐廳訂位"]
+category = "food"
+official_url = "https://inline.app"
+description = "inline 餐廳訂位。首頁轉到 inline Dining。"
+verify_status = "verified"
+
+[[org]]
+id = "org:eztable"
+name_zh = "EZTABLE"
+aliases = ["EZTABLE", "簡單桌", "訂位", "餐廳訂位"]
+category = "food"
+official_url = "https://www.eztable.com"
+description = "EZTABLE 簡單桌。首頁轉到台灣站。"
+verify_status = "verified"
+
+[[org]]
+id = "org:fda"
+name_zh = "衛生福利部食品藥物管理署"
+aliases = ["食藥署", "食品藥物管理署"]
+category = "food"
+official_url = "https://www.fda.gov.tw/"
+description = "衛生福利部食品藥物管理署。"
+verify_status = "verified"
+
+[[org]]
+id = "org:pxmart"
+name_zh = "全聯福利中心"
+aliases = ["全聯", "PX Mart", "超市", "量販"]
+category = "food"
+official_url = "https://www.pxmart.com.tw/"
+description = "全聯福利中心。"
+verify_status = "verified"
+
+[[org]]
+id = "org:uniprosperity"
+name_zh = "萬家福"
+aliases = ["家樂福", "萬家福", "量販"]
+category = "food"
+official_url = "https://www.uni-prosperity.com.tw/"
+description = "2026-11-11 www.carrefour.com.tw 與 online.carrefour.com.tw 都轉到萬家福官網，標題為歡迎光臨萬家福。"
+verify_status = "verified"
+
+[[org]]
+id = "org:costco"
+name_zh = "Costco 好市多"
+aliases = ["好市多", "Costco", "量販"]
+category = "food"
+official_url = "https://www.costco.com.tw/"
+description = "Costco 台灣好市多。"
+verify_status = "verified"
+
+[[org]]
+id = "org:fe-amart"
+name_zh = "愛買"
+aliases = ["愛買", "量販"]
+category = "food"
+official_url = "https://www.fe-amart.com.tw/"
+description = "愛買線上首頁。"
+verify_status = "verified"
+
+[[org]]
+id = "org:simplemart"
+name_zh = "美廉社"
+aliases = ["美廉社", "三商美廉", "超市"]
+category = "food"
+official_url = "https://www.simplemart.com.tw/"
+description = "美廉社。"
+verify_status = "verified"
+
+[[org]]
+id = "org:starbucks"
+name_zh = "星巴克台灣"
+aliases = ["星巴克", "Starbucks"]
+category = "food"
+official_url = "https://www.starbucks.com.tw/"
+description = "星巴克台灣。"
+verify_status = "verified"
+
+[[org]]
+id = "org:vscinemas"
+name_zh = "威秀影城"
+aliases = ["威秀", "電影", "看電影"]
+category = "entertainment"
+official_url = "https://www.vscinemas.com.tw/"
+description = "威秀影城。2026-11-11 回應 Access Denied，內文未讀到。"
+verify_status = "unverified"
+
+[[org]]
+id = "org:ambassador"
+name_zh = "國賓影城"
+aliases = ["國賓", "國賓影城", "電影", "看電影"]
+category = "entertainment"
+official_url = "https://www.ambassador.com.tw/"
+description = "國賓影城。頁面標題含國賓電影網站入口。"
+verify_status = "verified"
+
+[[org]]
+id = "org:showtimes"
+name_zh = "秀泰影城"
+aliases = ["秀泰", "電影", "看電影"]
+category = "entertainment"
+official_url = "https://www.showtimes.com.tw/"
+description = "秀泰影城官網網域。2026-11-11 為 HTTP 403，內文未讀到。"
+verify_status = "unverified"
+
+[[org]]
+id = "org:miramar"
+name_zh = "美麗華影城"
+aliases = ["美麗華", "電影", "看電影"]
+category = "entertainment"
+official_url = "https://www.miramarcinemas.tw/"
+description = "美麗華影城。頁面標題為美麗華影城。"
+verify_status = "verified"
+
+[[org]]
+id = "org:kktix"
+name_zh = "KKTIX"
+aliases = ["KKTIX", "售票", "活動報名"]
+category = "entertainment"
+official_url = "https://kktix.com"
+description = "KKTIX。2026-11-11 被 Cloudflare 擋住，內文未讀到。"
+verify_status = "unverified"
+
+[[org]]
+id = "org:tixcraft"
+name_zh = "拓元售票"
+aliases = ["拓元", "tixcraft", "售票"]
+category = "entertainment"
+official_url = "https://tixcraft.com"
+description = "拓元售票。2026-11-11 為 HTTP 403，內文未讀到。"
+verify_status = "unverified"
+
+[[org]]
+id = "org:ticket"
+name_zh = "年代售票"
+aliases = ["年代售票", "售票"]
+category = "entertainment"
+official_url = "https://www.ticket.com.tw"
+description = "年代售票。首頁轉到售票系統，標題為年代售票。"
+verify_status = "verified"
+
+[[org]]
+id = "org:opentix"
+name_zh = "OPENTIX"
+aliases = ["OPENTIX", "兩廳院售票", "售票"]
+category = "entertainment"
+official_url = "https://www.opentix.life/"
+description = "OPENTIX 兩廳院文化生活。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ntch"
+name_zh = "國家兩廳院"
+aliases = ["兩廳院", "國家戲劇院", "國家音樂廳"]
+category = "entertainment"
+official_url = "https://www.npac-ntch.org/ntch"
+description = "國家兩廳院。頁面標題為國家兩廳院。"
+verify_status = "verified"
+
+[[org]]
+id = "org:npm"
+name_zh = "國立故宮博物院"
+aliases = ["故宮", "故宮博物院"]
+category = "entertainment"
+official_url = "https://www.npm.gov.tw/"
+description = "國立故宮博物院北部院區。"
+verify_status = "verified"
+
+[[org]]
+id = "org:nps"
+name_zh = "內政部國家公園署"
+aliases = ["國家公園", "國家公園署"]
+category = "entertainment"
+official_url = "https://www.nps.gov.tw/"
+description = "內政部國家公園署。"
+verify_status = "verified"
+
+[[org]]
+id = "org:cpbl"
+name_zh = "中華職棒"
+aliases = ["中華職棒", "CPBL", "看棒球"]
+category = "entertainment"
+official_url = "https://www.cpbl.com.tw/"
+description = "中華職棒大聯盟全球資訊網。"
+verify_status = "verified"
+
+[[org]]
+id = "org:uniqlo"
+name_zh = "UNIQLO 台灣"
+aliases = ["UNIQLO", "優衣庫", "逛街"]
+category = "shopping"
+official_url = "https://www.uniqlo.com/tw/zh_TW/"
+description = "UNIQLO 台灣網路旗艦店。"
+verify_status = "verified"
+
+[[org]]
+id = "org:eslite"
+name_zh = "誠品"
+aliases = ["誠品", "誠品書店", "逛街"]
+category = "shopping"
+official_url = "https://www.eslite.com"
+description = "誠品網路書店網域。2026-11-11 被 Cloudflare 擋住，內文未讀到。"
+verify_status = "unverified"
+
+[[org]]
+id = "org:carousell"
+name_zh = "旋轉拍賣"
+aliases = ["旋轉拍賣", "Carousell", "二手"]
+category = "shopping"
+official_url = "https://tw.carousell.com/"
+description = "旋轉拍賣台灣。2026-11-11 被 Cloudflare 擋住，內文未讀到。"
+verify_status = "unverified"
+
+[[org]]
+id = "org:rent591"
+name_zh = "591租屋網"
+aliases = ["591", "租屋", "租房子", "租房"]
+category = "housing"
+official_url = "https://rent.591.com.tw"
+description = "591 租屋網。"
+verify_status = "verified"
+
+[[org]]
+id = "org:591"
+name_zh = "591房屋交易網"
+aliases = ["591", "買屋", "賣屋"]
+category = "housing"
+official_url = "https://www.591.com.tw/"
+description = "591 房屋交易網。"
+verify_status = "verified"
+
+[[org]]
+id = "org:lvr"
+name_zh = "不動產交易實價查詢服務網"
+aliases = ["實價登錄", "實價查詢"]
+category = "housing"
+official_url = "https://lvr.land.moi.gov.tw/"
+description = "內政部不動產交易實價查詢服務網。"
+verify_status = "verified"
+
+[[org]]
+id = "org:nlma"
+name_zh = "內政部國土管理署"
+aliases = ["國土管理署", "社會住宅", "租金補貼"]
+category = "housing"
+official_url = "https://www.nlma.gov.tw/"
+description = "內政部國土管理署。社會住宅與租金補貼由其主管；這裡只收首頁，沒有另編申辦路徑。"
+verify_status = "verified"
+
+[[org]]
+id = "org:sinyi"
+name_zh = "信義房屋"
+aliases = ["信義房屋", "信義", "買房"]
+category = "housing"
+official_url = "https://www.sinyi.com.tw/"
+description = "信義房屋。"
+verify_status = "verified"
+
+[[org]]
+id = "org:yungching"
+name_zh = "永慶房屋"
+aliases = ["永慶", "永慶房屋", "買房"]
+category = "housing"
+official_url = "https://www.yungching.com.tw/"
+description = "永慶房屋。"
+verify_status = "verified"
+
+[[org]]
+id = "org:rakuya"
+name_zh = "樂屋網"
+aliases = ["樂屋網", "買房"]
+category = "housing"
+official_url = "https://www.rakuya.com.tw/"
+description = "樂屋網。2026-11-11 被 Cloudflare 擋住，內文未讀到。"
+verify_status = "unverified"
+
+[[org]]
+id = "org:easycard"
+name_zh = "悠遊卡"
+aliases = ["悠遊卡", "EasyCard"]
+category = "payment"
+official_url = "https://www.easycard.com.tw/"
+description = "悠遊卡股份有限公司。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ipass"
+name_zh = "一卡通"
+aliases = ["一卡通", "iPASS"]
+category = "payment"
+official_url = "https://www.i-pass.com.tw/"
+description = "iPASS 一卡通。"
+verify_status = "verified"
+
+[[org]]
+id = "org:linepay"
+name_zh = "LINE Pay"
+aliases = ["LINE Pay", "LINEPAY", "行動支付"]
+category = "payment"
+official_url = "https://pay.line.me"
+description = "LINE Pay 台灣。"
+verify_status = "verified"
+
+[[org]]
+id = "org:jkopay"
+name_zh = "街口支付"
+aliases = ["街口", "街口支付", "JKOPay", "行動支付"]
+category = "payment"
+official_url = "https://www.jkopay.com"
+description = "街口支付。www.jkos.com 會轉到 jkopay.com。"
+verify_status = "verified"
+
+[[org]]
+id = "org:moe"
+name_zh = "教育部"
+aliases = ["教育部"]
+category = "education"
+official_url = "https://www.moe.gov.tw/"
+description = "教育部全球資訊網。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ntu"
+name_zh = "國立臺灣大學"
+aliases = ["台大", "臺灣大學", "台灣大學"]
+category = "education"
+official_url = "https://www.ntu.edu.tw/"
+description = "國立臺灣大學。"
+verify_status = "verified"
+
+[[org]]
+id = "org:nthu"
+name_zh = "國立清華大學"
+aliases = ["清大", "清華大學"]
+category = "education"
+official_url = "https://www.nthu.edu.tw/"
+description = "國立清華大學。"
+verify_status = "verified"
+
+[[org]]
+id = "org:nycu"
+name_zh = "國立陽明交通大學"
+aliases = ["陽明交大", "交大", "陽明"]
+category = "education"
+official_url = "https://www.nycu.edu.tw/"
+description = "國立陽明交通大學。"
+verify_status = "verified"
+
+[[org]]
+id = "org:ncku"
+name_zh = "國立成功大學"
+aliases = ["成大", "成功大學"]
+category = "education"
+official_url = "https://www.ncku.edu.tw/"
+description = "國立成功大學。"
+verify_status = "verified"

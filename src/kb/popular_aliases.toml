@@ -1,0 +1,87 @@
+# Colloquial names merged onto a folded CrUX domain. Curated rows still win
+# on URL and category when the same domain is already in the hand list;
+# these aliases are attached either way. Wikidata fills the rest at build time.
+
+[[site]]
+domain = "youtube.com"
+name_zh = "YouTube"
+name_en = "YouTube"
+aliases = ["YouTube", "YT", "影片"]
+category = "entertainment"
+
+[[site]]
+domain = "shopee.tw"
+name_zh = "蝦皮購物"
+name_en = "Shopee"
+aliases = ["蝦皮", "Shopee", "蝦皮拍賣"]
+category = "shopping"
+
+[[site]]
+domain = "ptt.cc"
+name_zh = "批踢踢實業坊"
+name_en = "PTT"
+aliases = ["PTT", "批踢踢", "PTT鄉民"]
+category = "social"
+
+[[site]]
+domain = "dcard.tw"
+name_zh = "Dcard"
+name_en = "Dcard"
+aliases = ["Dcard", "狄卡"]
+category = "social"
+
+[[site]]
+domain = "books.com.tw"
+name_zh = "博客來"
+name_en = "books.com.tw"
+aliases = ["博客來", "Books"]
+category = "shopping"
+
+[[site]]
+domain = "line.me"
+name_zh = "LINE"
+name_en = "LINE"
+aliases = ["LINE", "賴", "LINE貼圖"]
+category = "social"
+
+[[site]]
+domain = "wikipedia.org"
+name_zh = "維基百科"
+name_en = "Wikipedia"
+aliases = ["Wikipedia", "維基百科", "維基"]
+category = "media"
+
+[[site]]
+domain = "github.com"
+name_zh = "GitHub"
+name_en = "GitHub"
+aliases = ["GitHub", "Github"]
+category = "tech"
+
+[[site]]
+domain = "google.com"
+name_zh = "Google"
+name_en = "Google"
+aliases = ["Google", "谷歌"]
+category = "search"
+
+[[site]]
+domain = "facebook.com"
+name_zh = "Facebook"
+name_en = "Facebook"
+aliases = ["Facebook", "臉書", "FB"]
+category = "social"
+
+[[site]]
+domain = "instagram.com"
+name_zh = "Instagram"
+name_en = "Instagram"
+aliases = ["Instagram", "IG"]
+category = "social"
+
+[[site]]
+domain = "gamer.com.tw"
+name_zh = "巴哈姆特"
+name_en = "Bahamut"
+aliases = ["巴哈姆特", "巴哈"]
+category = "entertainment"

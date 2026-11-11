@@ -6,6 +6,7 @@
 
 ### 新增
 
+- **離線知識庫**：`kb search`／`kb get`／`kb open` 查台灣日常生活的官方入口與 data.gov.tw 146973 申辦服務。SQLite（編進執行檔的 FTS5 trigram）放在 `$AGENTBOX_HOME/kb/kb.sqlite`。短查詢與錯字會退回子字串／編輯距離。`kb import` 是給人用的匯入命令，不進 schema。工具順序改為先知識庫、再抓頁，`search` 是最後手段。精選表另含食衣住行育樂（公車、台鐵高鐵訂票與時刻、電影院、外送、租屋等）；連不上的官方網址標 `unverified`，不另編路徑。
 - Skill 的 `metadata.openclaw.install` 加上 Linux／Windows 的下載安裝項目（指向 v0.2.0 release 壓縮檔並固定 sha256），並以 `envVars` 宣告選用的 `TAVILY_API_KEY`、`STOOQ_API_KEY`、`AGENTBOX_HOME`，方便發布到 ClawHub。
 - README 新增「安裝」一節（含 macOS 從原始碼建置）與 OpenClaw 下載安裝後的 PATH 設定說明。
 

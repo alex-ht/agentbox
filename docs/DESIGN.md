@@ -56,6 +56,9 @@ $AGENTBOX_HOME（預設 ~/.agentbox 或 %USERPROFILE%\.agentbox）
 ├── docs/
 │   ├── 1.md      轉換後的內容
 │   └── 1.json    中繼資料：url、title、content_type、fetched_at
+├── kb/
+│   ├── kb.sqlite        離線知識庫（FTS5 trigram）
+│   └── ATTRIBUTION.txt  OGDL／精選入口的顯名聲明
 ├── tables/
 │   └── 1.json    表格：id、title、source、columns、rows（儲存格是 JSON 值）、created
 └── notes.jsonl   筆記，每行一個 JSON：id、text、source、tag、created
@@ -78,6 +81,8 @@ $AGENTBOX_HOME（預設 ~/.agentbox 或 %USERPROFILE%\.agentbox）
 ## 6. 工具 schema
 
 `src/schema.rs` 有一張手寫的規格表，`agentbox schema` 由它產生 OpenAI function tool 格式；`agentbox call` 也用同一張表把 JSON 參數轉回命令列。單元測試會逐一比對規格表與 clap 定義（參數名稱、是否必填、預設值、可選值），兩邊不一致就會失敗，避免 schema 與實際行為脫節。巢狀子命令的工具名稱用底線連接，例如 `file_replace`、`note_add`。可重複的旗標（如 `search --site`）在 schema 裡是字串陣列，`call` 會展開成多個 `--site=...`。
+
+`kb` 同樣拆成 `kb_search`、`kb_get`、`kb_open` 三個工具。`kb import` 會重建資料庫，和 `config` 一樣不進 schema，`call` 也不能執行它。
 
 報告工具拆成 `report_build`、`report_check`、`report_templates`、`report_template_show` 四個獨立的 function tool，而不是一個 `report` 工具加 `action` 參數。理由是小模型最容易犯的錯是參數搭配錯誤（例如對 `check` 傳了 `title`、對 `build` 傳了 `file`）；拆開後每個工具的 schema 只列自己用得到的參數，必填欄位也很明確，描述可以直接寫「下一步做什麼」。代價只是工具清單多三個項目。`table_*`（4 個）、`quote_*`（3 個）、`market_*`（4 個）沿用同樣的拆法；`extract` 例外，所有 kind 共用同一組參數，所以是一個工具加 `kind` 列舉。schema 測試會遞迴走訪任意深度的巢狀子命令（`report template show` → `report_template_show`），確保規格表與 clap 定義同步。
 
@@ -163,3 +168,41 @@ htmd 預設會把 `<table>` 攤平成文字。`fetch` 註冊了自己的 table h
 - 防止脫節：`src/skill.rs` 的測試會抽出所有 Markdown 程式碼區塊與行內程式碼裡的 `agentbox ...` 命令（處理引號、註解、管線、重新導向與 heredoc），用 `Cli::try_parse_from` 解析；禁止 `doc:N`、`...`、`<...>` 之類的佔位符，也禁止在雙引號裡寫 `$`（shell 會把 `$20` 展開成空字串，這正是要教模型避免的錯誤）。另外檢查 `SKILL.md` 提到每個給 agent 用的子命令、提到的參考檔都存在、資料夾裡的檔案都有嵌入執行檔、範本範例能解析。
 - `agentbox skill install` 用 `include_str!` 把同一份檔案編進執行檔，預設寫到 `~/.agents/skills/agentbox`（OpenClaw 與其他支援 Agent Skills 的工具都會讀），`--dir` 可指定其他 skills 根目錄。和其他寫入命令一樣先預覽，`--apply` 才寫；內容相同的檔案標為 `unchanged`。`skill` 與 `config` 一樣不放進 `schema`，`call` 也不能呼叫。
 - 為了讓小模型少犯 shell 錯誤，`file write --content -`、`file replace --replace -` 會從標準輸入讀內容（去掉結尾一個換行），搭配 `<<'EOF'` heredoc 就不必處理 `$`、引號與換行；`note clear` 讓同一個狀態目錄跑多個任務時，舊筆記不會混進新報告。
+
+## 13. 離線知識庫（kb）
+
+給只准查工具、不准靠參數記憶作答的小模型。台灣公部門或日常生活「官網在哪、怎麼辦」時，順序是 `kb search`／`kb get` → `kb open` 或 `fetch`（網址必須出現在知識庫輸出）→ `read` → `note add`。`search` 是最後手段。知識庫不產生任何沒寫進資料列的網址。
+
+### 紀錄與檔案
+
+兩種 `kind`：`org`（機關或品牌入口，id 如 `org:ris`）與 `service`（申辦項，id 為 `svc:` 加資料裡的服務代碼）。欄位跟 SQLite 表 `kb_record` 一致：`name_zh`、`name_en`、`aliases`（JSON 陣列）、`category`、`official_url`、`service_urls`（JSON，`rel` 為 `page`／`apply`／`form`／`email`）、`description`、`source`、`source_license`、`last_verified`、`verify_status`（`verified`｜`connected`｜`blocked`｜`unverified`）、`cached_doc`、`updated_at`。
+
+```sql
+CREATE VIRTUAL TABLE kb_fts USING fts5(
+  name_zh, name_en, aliases, category, description, official_url,
+  content='kb_record', content_rowid='rowid',
+  tokenize='trigram'
+);
+```
+
+索引由 INSERT／UPDATE／DELETE 觸發器維護，`kb import` 結束時再 `rebuild` 一次。SQLite 用 `rusqlite` 的 `bundled` 功能編進執行檔（含 FTS5），靜態 musl 與 Windows 建置不連系統的 libsqlite。快照不另存一份全文：`kb open` 走既有的 `fetch`，把 `doc:N` 與當初的 URL 記在 `cached_doc`（`doc:N<TAB>url`）。30 天內、且 URL 相同時直接回傳那個 `doc:N`（`from_cache: true`），輸出形狀與 `fetch` 相同，並多 `kb_id`、`which`、`from_cache`。
+
+### 搜尋
+
+`kb search` 只回精簡列表：`id`、`kind`、`name_zh`、`category`、`official_url`、`verify_status`、`score`、`match`。`score` 正規化到 0–1，越高越好；1.0 是名稱或別名在正規化之後完全相同。`match` 是 `exact`、`partial`（查詢是較長名稱的子字串）或 `fuzzy`。
+
+正規化會折全形、ASCII 大小寫，以及少量異體（份／分、証／證、台／臺），再去掉空白與標點。查詢正規化後至少 3 個字才送 FTS5 trigram（整句加引號，當成子字串）。trigram 以 Unicode 碼點切，所以「所得稅」命中「綜合所得稅結算申報」。少於 3 個字，或 trigram 零筆（含錯字），改掃描名稱、別名、分類與說明：子字串最高，其次是名稱上的編輯距離（3–6 字允許距離 1，更長允許 2），再來是夠密的 bigram，最後是字元覆蓋窗口（「報」和「稅」在「綜合所得稅結算申報」裡靠得夠近）。門檻是 0.47；沒過的前幾名若達到 0.32，會寫進 `not_found` 的 hint，但不當成命中。
+
+失敗時 hint 一定可複製。沒有資料是 `kb_empty`，hint 指向 `agentbox kb import --curated`。有資料但沒過門檻是 `not_found`：先換較短的正式名稱再 `kb search`，明文寫不要編造網址或步驟，最後才是 `agentbox search "<查詢>" --site gov.tw`。`kb get` 找不到時 hint 指向 `kb search`。
+
+### 開啟與受阻
+
+`kb open --which` 預設 `official`，也可以是該筆 `service_urls` 的 `rel`。只會抓這筆紀錄裡已經有的 URL。HTTP 401／403／429 改成 `fetch_blocked`，`error` 在 `code`、`message` 之後附上 `id`、`official_url`、`url`（外層仍是 `ok:false` 加頂層 `error`，不是把錯誤塞進 `data`）。hint 要模型不要改寫網址，並可改跑 `kb get` 只回報入口。
+
+### 種子
+
+- 精選表在 `src/kb/curated.toml`，`kb import --curated` 載入（或 `--curated-file` 用同一格式的外部檔）。來源 `curated:kb-v1`，授權標示 `official-url-only`，`last_verified` 為 2026-11-11。狀態接受 `verified`／`connected`／`blocked`／`unverified`，網址必須是 `https`。`unverified` 表示這次有對該官方網址發請求，但沒讀到可核對的內文（逾時、403、挑戰頁）；網址仍只寫查過的那一個，不另編路徑。分類除了原來的 14 個，還有 `food`、`shopping`、`housing`、`education`、`entertainment`、`payment`。
+- `kb import --services FILE` 讀 146973 的 JSON 陣列（線上／臨櫃／電郵傳真三份欄位都認）。`official_url` 優先用 `頁面連結`，否則用申辦、表單或電郵連結；都沒有 http(s) 網址的列略過。來源 `data.gov.tw:146973`，授權 `OGDL-1.0`，`verify_status` 為 `unverified`（整批匯入，沒有逐筆 curl）。說明取服務內容，截到 400 字。分類用標題與說明裡的關鍵字對到生活分類，對不到就用檔名推得的 `online`／`counter`／`other`。
+- 每次匯入覆寫 `ATTRIBUTION.txt`：精選入口的界線，資料集 146973 的顯名（數位發展部、資料集名稱、OGDL-1.0、https://data.gov.tw/license/、三個 JSON 網址），以及 CrUX／Wikidata 的授權。`--replace` 會先刪掉同一 `source` 的舊列。
+- 常用網站：`kb import --crux FILE --scope tw|global --max-rank N` 讀 zakird/crux-top-lists 的 `origin,rank` CSV（可 gzip）。`rank` 是量級桶，只保留 `rank <= N`。用內嵌的 Public Suffix List 折成 eTLD+1；首頁優先清單裡出現過的 `www` 或 apex（https 優先），其餘有用的子網域放進 `alt_urls`（例如 `irs.thsrc.com.tw`）。登入、SSO、admin、API、購物車、結帳、LMS、CDN 這類子網域不當首頁，也不進 `alt_urls`。整個網域若是成人關鍵字、IP、或 `popular_denylist.txt` 裡的基礎設施／廣告網域就丟掉。`github.io`、`blogspot.com`、`wordpress.com` 這類共用後綴整筆略過。`--verify` 才抓首頁，`--enrich` 才查 Wikidata P856（CC0）。產物提交在 `src/kb/popular_tw.json.gz` 與 `popular_global.json.gz`，`kb import --popular` 離線載入。跟精選表同一註冊網域時精選列勝出，只把別名與桶併進去。搜尋先比文字分數，桶（1000 優於 5000）只當同分時的次序，不會把沒過門檻的列變成命中。重現步驟見 `scripts/build_popular_seed.sh`。
+- 測試只用內建 TOML、小型 fixture 與 `testutil::serve`，不連外網。
