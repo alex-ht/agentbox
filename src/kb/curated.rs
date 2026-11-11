@@ -65,8 +65,12 @@ pub fn parse(text: &str) -> Result<Vec<Record>, AppError> {
     Ok(out)
 }
 
+/// Categories used by the CrUX popular-sites layer, not by the hand-curated TOML.
+pub const POPULAR_CATEGORIES: &[&str] = &["general", "media", "social", "search", "tech"];
+
 pub fn known_category(category: &str) -> bool {
     LIFE_CATEGORIES.contains(&category)
+        || POPULAR_CATEGORIES.contains(&category)
         || matches!(category, "online" | "counter" | "other" | "gov")
 }
 

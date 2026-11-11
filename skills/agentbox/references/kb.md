@@ -37,7 +37,9 @@ agentbox search "身分證 補發" --site gov.tw --max-results 5
 
 ## Categories
 
-`portal`, `household`, `nhi`, `tax`, `motor`, `labor`, `welfare`, `transport`, `medical`, `utilities`, `post`, `weather`, `consumer`, `finance`, `food`, `shopping`, `housing`, `education`, `entertainment`, `payment`.
+`portal`, `household`, `nhi`, `tax`, `motor`, `labor`, `welfare`, `transport`, `medical`, `utilities`, `post`, `weather`, `consumer`, `finance`, `food`, `shopping`, `housing`, `education`, `entertainment`, `payment`, `general`, `media`, `social`, `search`, `tech`.
+
+`kb import --popular` loads the bundled Chrome UX Report seeds (CC BY 4.0). A popularity bucket only breaks ties; it does not outrank a better text match. Do not run `kb import` yourself.
 
 Everyday examples: `電影` and `看電影` for cinemas, `公車` and `坐公車` for city buses, `天氣` for the weather agency, `台鐵` or `高鐵` for rail, `租屋` or `租房子` for rentals, `外送` or `叫外送` for delivery. `verify_status: unverified` means the official URL is stored but this check could not read the page.
 

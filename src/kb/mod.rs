@@ -6,6 +6,7 @@
 mod curated;
 mod db;
 mod import_gov;
+mod popular;
 mod score;
 
 #[cfg(test)]
@@ -29,11 +30,19 @@ pub struct SearchArgs {
     pub limit: usize,
 }
 
+#[derive(Default)]
 pub struct ImportArgs {
     pub curated: bool,
     pub curated_file: Option<String>,
     pub services: Vec<String>,
     pub replace: bool,
+    pub crux: Option<String>,
+    pub scope: Option<String>,
+    pub max_rank: Option<u32>,
+    pub verify: bool,
+    pub enrich: bool,
+    pub write_seed: Option<String>,
+    pub popular: bool,
 }
 
 pub fn run_search(store: &Store, args: &SearchArgs) -> CmdResult {
@@ -120,6 +129,10 @@ pub fn run_search(store: &Store, args: &SearchArgs) -> CmdResult {
         .collect();
     ranked.sort_by(|a, b| {
         b.0.total_cmp(&a.0)
+            .then_with(|| {
+                score::popularity_key(b.1.popularity_bucket)
+                    .cmp(&score::popularity_key(a.1.popularity_bucket))
+            })
             .then_with(|| {
                 a.1.name_zh
                     .chars()
@@ -255,11 +268,16 @@ pub fn run_open(store: &Store, id: &str, which: &str) -> CmdResult {
 }
 
 pub fn run_import(store: &Store, args: &ImportArgs) -> CmdResult {
-    if !args.curated && args.curated_file.is_none() && args.services.is_empty() {
+    if !args.curated
+        && args.curated_file.is_none()
+        && args.services.is_empty()
+        && args.crux.is_none()
+        && !args.popular
+    {
         return Err(AppError::new(
             "bad_args",
             "nothing to import",
-            "Pass --curated, --curated-file FILE, --services FILE, or a combination. Example: `agentbox kb import --curated`.",
+            "Pass --curated, --popular, --services FILE, or --crux FILE --scope tw --max-rank 5000. Example: `agentbox kb import --curated`.",
         ));
     }
     let curated_records = if args.curated {
@@ -271,6 +289,39 @@ pub fn run_import(store: &Store, args: &ImportArgs) -> CmdResult {
     } else {
         Vec::new()
     };
+
+    let mut popular_records = Vec::new();
+    let mut crux_stats = None;
+    if let Some(path) = &args.crux {
+        let scope = args.scope.clone().unwrap_or_else(|| "tw".into());
+        let max_rank = args.max_rank.unwrap_or(5000);
+        let month = popular::month_from_path(path);
+        let csv = popular::read_crux_file(Path::new(path))?;
+        let (mut recs, stats) = popular::prepare_csv(&csv, &scope, max_rank, &month);
+        if args.enrich {
+            let _ = popular::enrich_wikidata(&mut recs);
+        }
+        if args.verify {
+            popular::verify_records(&mut recs);
+            let _ = popular::drop_adult_text(&mut recs);
+        }
+        if let Some(out) = &args.write_seed {
+            let seed = popular::records_to_seed(&recs, &scope, &month);
+            let text = serde_json::to_string(&seed).map_err(|e| {
+                AppError::new(
+                    "kb_error",
+                    format!("seed json: {e}"),
+                    "Retry the same kb import --crux command.",
+                )
+            })?;
+            fs::write(out, text).map_err(|e| AppError::io(&format!("write {out}"), e))?;
+        }
+        crux_stats = Some(stats);
+        popular_records.append(&mut recs);
+    }
+    if args.popular {
+        popular_records.extend(popular::load_bundled()?);
+    }
 
     let mut service_records = Vec::new();
     let mut skipped = 0;
@@ -301,6 +352,7 @@ pub fn run_import(store: &Store, args: &ImportArgs) -> CmdResult {
     for rec in &service_records {
         db::upsert(&tx, rec)?;
     }
+    let (popular_inserted, popular_merged) = popular::merge_records(&tx, &popular_records)?;
     db::rebuild_fts(&tx)?;
     tx.commit().map_err(|e| {
         AppError::new(
@@ -320,6 +372,16 @@ pub fn run_import(store: &Store, args: &ImportArgs) -> CmdResult {
         "services": service_records.len(),
         "skipped": skipped,
         "replaced": replaced,
+        "popular_inserted": popular_inserted,
+        "popular_merged": popular_merged,
+        "crux_input_rows": crux_stats.as_ref().map(|s| s.input_rows),
+        "crux_kept": crux_stats.as_ref().map(|s| s.kept_domains),
+        "crux_dropped_rank": crux_stats.as_ref().map(|s| s.dropped_rank),
+        "crux_dropped_adult": crux_stats.as_ref().map(|s| s.dropped_adult),
+        "crux_dropped_infra": crux_stats.as_ref().map(|s| s.dropped_infra),
+        "crux_dropped_ip": crux_stats.as_ref().map(|s| s.dropped_ip),
+        "crux_dropped_noise_only": crux_stats.as_ref().map(|s| s.dropped_noise_only),
+        "crux_dropped_other": crux_stats.as_ref().map(|s| s.dropped_other),
         "records": total,
         "attribution": db::attribution_path(store).display().to_string(),
     }))
@@ -490,7 +552,7 @@ agentbox 離線知識庫顯名聲明
 這些列只收錄名稱、分類與官方網址。verify_status 為 verified、connected、blocked 或 unverified（有查過但這台機器讀不到內文）。
 不是政府開放資料的重製，也沒有把網頁全文放進知識庫。民間網站只供查詢官方入口，
 授權標示為 {curated_license}。驗證日期：{verified}。
-沒有通過連線核對的網址刻意不收錄。
+讀不到內文的官方網址可以留下，但 verify_status 會是 unverified，不能當成已核對的內容。
 
 二、我的E政府申辦服務（source = {gov}）
 本庫目前有 {gov_rows} 筆來自此資料集的服務項。
@@ -505,6 +567,16 @@ agentbox 離線知識庫顯名聲明
 - https://www.gov.tw/govotherservice.json （電郵傳真）
 使用這些服務項時必須保留本顯名聲明（提供機關、資料集名稱、授權）。
 未盡顯名義務者，視同自始未取得授權。
+
+三、常用網站（Chrome UX Report，source 以 crux: 開頭）
+資料：Google Chrome User Experience Report（CrUX）台灣與全球 origin 名單，
+快取檔來自 https://github.com/zakird/crux-top-lists （country/tw 與 global 的 YYYYMM.csv.gz）。
+授權：Creative Commons Attribution 4.0 International（CC BY 4.0）
+https://creativecommons.org/licenses/by/4.0/
+https://developer.chrome.com/docs/crux/methodology/
+標示：Chrome User Experience Report, Google.
+名次是量級桶（1000、5000…），不是精確排名。桶只在文字相關性打平時當排序加權。
+若名稱或別名來自 Wikidata P856，該部分為 CC0。
 ",
         now = db::now_stamp(),
         curated = curated::SOURCE,

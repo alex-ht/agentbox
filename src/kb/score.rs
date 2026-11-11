@@ -219,6 +219,18 @@ fn levenshtein(a: &[char], b: &[char], max_dist: usize) -> Option<usize> {
     (prev[m] <= max_dist).then_some(prev[m])
 }
 
+/// Mild CrUX boost used only as a tie-break after the text score.
+/// A bucket of 1000 outranks 5000, which outranks everything else.
+/// It never changes whether a row clears [`HIT_MIN`].
+pub fn popularity_key(bucket: Option<i64>) -> u8 {
+    match bucket {
+        Some(b) if (1..=1000).contains(&b) => 3,
+        Some(b) if b <= 5_000 => 2,
+        Some(b) if b <= 10_000 => 1,
+        _ => 0,
+    }
+}
+
 /// Round to 3 decimal places for a stable JSON number.
 pub fn round_score(score: f64) -> f64 {
     (score.clamp(0.0, 1.0) * 1000.0).round() / 1000.0

@@ -18,9 +18,7 @@ fn import_curated(store: &Store) {
         store,
         &ImportArgs {
             curated: true,
-            curated_file: None,
-            services: vec![],
-            replace: false,
+            ..Default::default()
         },
     )
     .unwrap();
@@ -34,10 +32,8 @@ fn import_services(store: &Store, path: &str) {
     run_import(
         store,
         &ImportArgs {
-            curated: false,
-            curated_file: None,
             services: vec![path.to_string()],
-            replace: false,
+            ..Default::default()
         },
     )
     .unwrap();
@@ -443,9 +439,8 @@ fn import_writes_ogdl_attribution_and_skips_rows_without_urls() {
         &store,
         &ImportArgs {
             curated: true,
-            curated_file: None,
             services: vec![fixture_path().display().to_string()],
-            replace: false,
+            ..Default::default()
         },
     )
     .unwrap();
@@ -462,9 +457,8 @@ fn import_writes_ogdl_attribution_and_skips_rows_without_urls() {
         &store,
         &ImportArgs {
             curated: true,
-            curated_file: None,
             services: vec![fixture_path().display().to_string()],
-            replace: false,
+            ..Default::default()
         },
     )
     .unwrap();
@@ -485,10 +479,9 @@ fn replace_drops_previous_rows_from_the_same_source() {
     run_import(
         &store,
         &ImportArgs {
-            curated: false,
-            curated_file: None,
             services: vec![slim.display().to_string()],
             replace: true,
+            ..Default::default()
         },
     )
     .unwrap();
@@ -581,6 +574,128 @@ fn schema_lists_kb_tools_but_not_import() {
     assert!(names.contains(&"kb_get"));
     assert!(names.contains(&"kb_open"));
     assert!(!names.contains(&"kb_import"));
+}
+
+#[test]
+fn popular_seed_finds_everyday_sites_and_skips_adult() {
+    let seed = super::popular::seed_from_bytes(super::popular::SEED_TW).expect("tw seed");
+    assert!(seed.records.len() > 1000, "tw seed {}", seed.records.len());
+    for host in [
+        "youtube.com",
+        "shopee.tw",
+        "ptt.cc",
+        "dcard.tw",
+        "books.com.tw",
+        "line.me",
+        "wikipedia.org",
+        "github.com",
+    ] {
+        assert!(
+            seed.records.iter().any(|r| r.id == format!("pop:{host}")),
+            "missing {host}"
+        );
+    }
+    for bad in [
+        "xvideos.com",
+        "18porn.cc",
+        "123av.com",
+        "pornhub.com",
+        "gstatic.com",
+    ] {
+        assert!(
+            seed.records
+                .iter()
+                .all(|r| r.id != format!("pop:{bad}") && !r.official_url.contains(bad)),
+            "adult or infra leaked: {bad}"
+        );
+    }
+    let (_tmp, store) = store_dir();
+    import_curated(&store);
+    run_import(
+        &store,
+        &ImportArgs {
+            popular: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let cases = [
+        ("YouTube", "youtube.com"),
+        ("蝦皮", "shopee.tw"),
+        ("PTT", "ptt.cc"),
+        ("Dcard", "dcard.tw"),
+        ("博客來", "books.com.tw"),
+        ("LINE", "line.me"),
+        ("Wikipedia", "wikipedia.org"),
+        ("GitHub", "github.com"),
+    ];
+    for (query, host) in cases {
+        let out = run_search(
+            &store,
+            &SearchArgs {
+                query: query.into(),
+                category: None,
+                kind: "all".into(),
+                limit: 3,
+            },
+        )
+        .unwrap_or_else(|e| panic!("{query}: {} {}", e.message, e.hint));
+        let url = out.data["hits"][0]["official_url"].as_str().unwrap();
+        assert!(
+            url.contains(host),
+            "{query} top url {url} does not contain {host}"
+        );
+    }
+}
+
+#[test]
+fn popularity_bucket_breaks_ties_only() {
+    let (_tmp, store) = store_dir();
+    let conn = super::db::open(&store).unwrap();
+    let mut exact = super::db::Record::blank("pop:plain.example", "org");
+    exact.name_zh = "zzzzbrand".into();
+    exact.aliases = vec!["zzzzbrand".into()];
+    exact.official_url = "https://plain.example".into();
+    exact.category = "general".into();
+    let mut popular = super::db::Record::blank("pop:pop.example", "org");
+    popular.name_zh = "zzzzbrand".into();
+    popular.aliases = vec!["zzzzbrand".into()];
+    popular.official_url = "https://pop.example".into();
+    popular.popularity_bucket = Some(1000);
+    popular.popularity_scope = "tw".into();
+    popular.category = "general".into();
+    let mut partial = super::db::Record::blank("pop:weak.example", "org");
+    partial.name_zh = "zzzzbrand shop".into();
+    partial.official_url = "https://weak.example".into();
+    partial.popularity_bucket = Some(1000);
+    partial.category = "general".into();
+    super::db::upsert(&conn, &exact).unwrap();
+    super::db::upsert(&conn, &popular).unwrap();
+    super::db::upsert(&conn, &partial).unwrap();
+    super::db::rebuild_fts(&conn).unwrap();
+    drop(conn);
+    let out = run_search(
+        &store,
+        &SearchArgs {
+            query: "zzzzbrand".into(),
+            category: None,
+            kind: "all".into(),
+            limit: 3,
+        },
+    )
+    .unwrap();
+    let ids: Vec<&str> = out.data["hits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|h| h["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        ids[0], "pop:pop.example",
+        "bucket should win the exact-name tie: {ids:?}"
+    );
+    assert_eq!(ids[1], "pop:plain.example", "{ids:?}");
+    assert_ne!(ids[0], "pop:weak.example");
 }
 
 #[test]

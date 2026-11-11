@@ -270,7 +270,7 @@ pub const SPECS: &[Spec] = &[
         desc: "Search the offline Taiwan knowledge base before any web search. Returns ranked hits (id, name_zh, category, official_url, verify_status, score). Use only URLs from these hits. If nothing matches, follow the hint: rephrase, and only then use web search as a last resort. Never invent a URL.",
         params: &[
             pos("query", "Keywords, e.g. 報稅 or 身分證 補發. Chinese partial words work"),
-            opt("category", Kind::Str, "Only this category slug: portal, household, nhi, tax, motor, labor, welfare, transport, medical, utilities, post, weather, consumer, finance, food, shopping, housing, education, entertainment, payment"),
+            opt("category", Kind::Str, "Category slug: portal, household, nhi, tax, motor, labor, welfare, transport, medical, utilities, post, weather, consumer, finance, food, shopping, housing, education, entertainment, payment, general, media, social, search, tech"),
             choice("kind", "all", &["org", "service", "all"], "org, service, or all"),
             dflt("limit", Kind::Int, "8", "Maximum hits (1-50)"),
         ],

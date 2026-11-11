@@ -376,7 +376,7 @@ pub enum KbCmd {
     },
     /// Load curated sites and/or a data.gov.tw 146973 JSON file (human setup)
     #[command(
-        after_help = "Not an agent tool. Writes $AGENTBOX_HOME/kb/kb.sqlite and ATTRIBUTION.txt.\n\nExamples:\n  agentbox kb import --curated\n  agentbox kb import --services govonlineservice.json\n  agentbox kb import --curated --services govonlineservice.json --services govcounterservice.json --services govotherservice.json --replace"
+        after_help = "Not an agent tool. Writes $AGENTBOX_HOME/kb/kb.sqlite and ATTRIBUTION.txt.\n\nExamples:\n  agentbox kb import --curated\n  agentbox kb import --popular\n  agentbox kb import --services govonlineservice.json\n  agentbox kb import --crux tw-202610.csv.gz --scope tw --max-rank 5000 --verify --enrich --write-seed popular_tw.json"
     )]
     Import {
         /// Load the built-in curated official sites
@@ -391,6 +391,27 @@ pub enum KbCmd {
         /// Drop previous rows from the same source before importing
         #[arg(long)]
         replace: bool,
+        /// CrUX csv or csv.gz (zakird/crux-top-lists). Human setup, not an agent tool.
+        #[arg(long, requires = "scope", requires = "max_rank")]
+        crux: Option<String>,
+        /// Which CrUX list the file is: tw or global
+        #[arg(long, value_parser = ["tw", "global"])]
+        scope: Option<String>,
+        /// Keep origins whose bucket is at most this (1000 and 5000 are buckets, not positions)
+        #[arg(long)]
+        max_rank: Option<u32>,
+        /// GET each homepage and record verify_status. Build time only.
+        #[arg(long)]
+        verify: bool,
+        /// Look up Wikidata P856 names (CC0). Build time only.
+        #[arg(long)]
+        enrich: bool,
+        /// Write the folded seed JSON here instead of only inserting it
+        #[arg(long)]
+        write_seed: Option<String>,
+        /// Load the built-in CrUX seeds (popular_tw / popular_global)
+        #[arg(long)]
+        popular: bool,
     },
 }
 

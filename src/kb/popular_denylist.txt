@@ -1,0 +1,64 @@
+# Registrable domains that are not a site a person looks up.
+# Match is exact on the eTLD+1 (or the full host if it is listed).
+# Rules also live in src/kb/popular.rs (adult labels, noise subdomains, IP hosts).
+#
+# Infrastructure, CDN, ads, and tracking. Not homepages.
+gstatic.com
+googleapis.com
+googleusercontent.com
+ggpht.com
+ytimg.com
+googletagmanager.com
+google-analytics.com
+googlesyndication.com
+doubleclick.net
+gvt1.com
+gvt2.com
+fbcdn.net
+fbsbx.com
+facebook.net
+akamai.net
+akamaized.net
+cloudfront.net
+fastly.net
+fastlylb.net
+jsdelivr.net
+unpkg.com
+cdnjs.com
+bootstrapcdn.com
+fontawesome.com
+scorecardresearch.com
+hotjar.com
+segment.io
+segment.com
+sentry.io
+newrelic.com
+nr-data.net
+demdex.net
+omtrdc.net
+adnxs.com
+criteo.com
+criteo.net
+taboola.com
+outbrain.com
+moatads.com
+amazon-adsystem.com
+twimg.com
+cloudflare.com
+cloudflareinsights.com
+# Shared blog hosts are not one official site.
+blogspot.com
+wordpress.com
+github.io
+# Adult domains the label heuristic can miss (compact or branded names).
+xvideos.com
+xnxx.com
+xhamster.com
+pornhub.com
+onlyfans.com
+missav.com
+nhentai.net
+hanime.tv
+rule34.xxx
+# Phishing / malware names seen in top lists. This is a maintained file,
+# not a copy of a Safe Browsing dump.

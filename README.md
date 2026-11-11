@@ -140,7 +140,7 @@ agentbox config unset tavily.api_key
 
 知識庫不會編造網址。沒核對過的網域（例如 my.gov.tw、medcloud.nhi.gov.tw、www.cwa.gov.tw 首頁）故意不收。
 
-資料在 `$AGENTBOX_HOME/kb/kb.sqlite`（FTS5 trigram 索引），顯名聲明在同目錄的 `ATTRIBUTION.txt`。SQLite 編進執行檔，不需要系統上的 sqlite。內建 153 筆精選入口（20 個生活分類，含食衣住行育樂的 `food`、`shopping`、`housing`、`education`、`entertainment`、`payment`。`verify_status` 為 `verified`／`connected`／`blocked`／`unverified`；`unverified` 是有查過但這次沒讀到內文的官方網址），申辦服務用 data.gov.tw 資料集 146973（政府資料開放授權條款第 1 版，提供機關是數位發展部）：
+資料在 `$AGENTBOX_HOME/kb/kb.sqlite`（FTS5 trigram 索引），顯名聲明在同目錄的 `ATTRIBUTION.txt`。SQLite 編進執行檔，不需要系統上的 sqlite。內建 153 筆精選入口（生活分類另含 `food`、`shopping`、`housing`、`education`、`entertainment`、`payment`，以及 CrUX 常用站的 `general`、`media`、`social`、`search`、`tech`。`verify_status` 為 `verified`／`connected`／`blocked`／`unverified`）。`kb import --popular` 再載入已提交的 Chrome UX Report 種子（CC BY 4.0；名稱若來自 Wikidata 則該部分為 CC0）。申辦服務用 data.gov.tw 資料集 146973（政府資料開放授權條款第 1 版，提供機關是數位發展部）：
 
 ```bash
 agentbox kb import --curated

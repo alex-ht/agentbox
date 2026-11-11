@@ -196,6 +196,13 @@ fn dispatch(cmd: Cmd, store: &Store) -> CmdResult {
             curated_file,
             services,
             replace,
+            crux,
+            scope,
+            max_rank,
+            verify,
+            enrich,
+            write_seed,
+            popular,
         }) => kb::run_import(
             store,
             &kb::ImportArgs {
@@ -203,6 +210,13 @@ fn dispatch(cmd: Cmd, store: &Store) -> CmdResult {
                 curated_file,
                 services,
                 replace,
+                crux,
+                scope,
+                max_rank,
+                verify,
+                enrich,
+                write_seed,
+                popular,
             },
         ),
         Cmd::Search {

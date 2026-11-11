@@ -37,6 +37,12 @@ pub struct Record {
     pub verify_status: String,
     pub cached_doc: String,
     pub updated_at: String,
+    /// CrUX magnitude bucket (1000, 5000, ...). Empty for curated rows.
+    pub popularity_bucket: Option<i64>,
+    /// `tw` or `global` when the row came from a CrUX list.
+    pub popularity_scope: String,
+    /// Other origins folded into this registrable domain.
+    pub alt_urls: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +57,7 @@ pub struct SearchRow {
     pub official_url: String,
     pub verify_status: String,
     pub description: String,
+    pub popularity_bucket: Option<i64>,
 }
 
 pub enum Recall {
@@ -110,7 +117,10 @@ fn migrate(conn: &Connection, path: &Path) -> Result<(), AppError> {
           last_verified   TEXT,
           verify_status   TEXT,
           cached_doc      TEXT,
-          updated_at      TEXT
+          updated_at      TEXT,
+          popularity_bucket INTEGER,
+          popularity_scope  TEXT,
+          alt_urls          TEXT
         );
         CREATE INDEX IF NOT EXISTS kb_record_category ON kb_record(category);
         CREATE INDEX IF NOT EXISTS kb_record_kind ON kb_record(kind);
@@ -136,7 +146,16 @@ fn migrate(conn: &Connection, path: &Path) -> Result<(), AppError> {
         END;
         ",
     )
-    .map_err(|e| sql_err(path, e))
+    .map_err(|e| sql_err(path, e))?;
+    // Older databases created before the popular-sites columns.
+    for sql in [
+        "ALTER TABLE kb_record ADD COLUMN popularity_bucket INTEGER",
+        "ALTER TABLE kb_record ADD COLUMN popularity_scope TEXT",
+        "ALTER TABLE kb_record ADD COLUMN alt_urls TEXT",
+    ] {
+        let _ = conn.execute(sql, []);
+    }
+    Ok(())
 }
 
 fn sql_err(path: &Path, err: rusqlite::Error) -> AppError {
@@ -210,7 +229,7 @@ pub fn load_search_rows(
     let mut stmt = conn
         .prepare(
             "SELECT rowid, id, kind, name_zh, name_en, aliases, category, official_url,
-                    verify_status, description
+                    verify_status, description, popularity_bucket
              FROM kb_record
              WHERE (?1 = '' OR category = ?1) AND (?2 = 'all' OR kind = ?2)",
         )
@@ -228,6 +247,7 @@ pub fn load_search_rows(
                 official_url: r.get::<_, Option<String>>(7)?.unwrap_or_default(),
                 verify_status: r.get::<_, Option<String>>(8)?.unwrap_or_default(),
                 description: r.get::<_, Option<String>>(9)?.unwrap_or_default(),
+                popularity_bucket: r.get(10)?,
             })
         })
         .map_err(|e| sql_err(Path::new("kb.sqlite"), e))?;
@@ -242,7 +262,7 @@ pub fn get(conn: &Connection, id: &str) -> Result<Option<Record>, AppError> {
     conn.query_row(
         "SELECT id, kind, name_zh, name_en, aliases, category, official_url, service_urls,
                 description, source, source_license, last_verified, verify_status, cached_doc,
-                updated_at
+                updated_at, popularity_bucket, popularity_scope, alt_urls
          FROM kb_record WHERE id = ?1",
         params![id],
         |r| {
@@ -264,6 +284,9 @@ pub fn get(conn: &Connection, id: &str) -> Result<Option<Record>, AppError> {
                 verify_status: r.get::<_, Option<String>>(12)?.unwrap_or_default(),
                 cached_doc: r.get::<_, Option<String>>(13)?.unwrap_or_default(),
                 updated_at: r.get::<_, Option<String>>(14)?.unwrap_or_default(),
+                popularity_bucket: r.get(15)?,
+                popularity_scope: r.get::<_, Option<String>>(16)?.unwrap_or_default(),
+                alt_urls: parse_string_list(&r.get::<_, Option<String>>(17)?.unwrap_or_default()),
             })
         },
     )
@@ -277,8 +300,9 @@ pub fn upsert(conn: &Connection, rec: &Record) -> Result<(), AppError> {
     conn.execute(
         "INSERT INTO kb_record (
             id, kind, name_zh, name_en, aliases, category, official_url, service_urls,
-            description, source, source_license, last_verified, verify_status, cached_doc, updated_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            description, source, source_license, last_verified, verify_status, cached_doc, updated_at,
+            popularity_bucket, popularity_scope, alt_urls
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
          ON CONFLICT(id) DO UPDATE SET
             kind = excluded.kind,
             name_zh = excluded.name_zh,
@@ -296,7 +320,10 @@ pub fn upsert(conn: &Connection, rec: &Record) -> Result<(), AppError> {
                 WHEN excluded.official_url = kb_record.official_url THEN kb_record.cached_doc
                 ELSE ''
             END,
-            updated_at = excluded.updated_at",
+            updated_at = excluded.updated_at,
+            popularity_bucket = excluded.popularity_bucket,
+            popularity_scope = excluded.popularity_scope,
+            alt_urls = excluded.alt_urls",
         params![
             rec.id,
             rec.kind,
@@ -313,6 +340,83 @@ pub fn upsert(conn: &Connection, rec: &Record) -> Result<(), AppError> {
             rec.verify_status,
             rec.cached_doc,
             rec.updated_at,
+            rec.popularity_bucket,
+            rec.popularity_scope,
+            serde_json::to_string(&rec.alt_urls).unwrap_or_else(|_| "[]".into()),
+        ],
+    )
+    .map(|_| ())
+    .map_err(|e| sql_err(Path::new("kb.sqlite"), e))
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct MergeRow {
+    pub id: String,
+    pub source: String,
+    pub official_url: String,
+    pub aliases: Vec<String>,
+    pub alt_urls: Vec<String>,
+    pub popularity_bucket: Option<i64>,
+    pub popularity_scope: String,
+}
+
+pub fn list_merge_rows(conn: &Connection) -> Result<Vec<MergeRow>, AppError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, source, official_url, aliases, alt_urls, popularity_bucket, popularity_scope
+             FROM kb_record",
+        )
+        .map_err(|e| sql_err(Path::new("kb.sqlite"), e))?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(MergeRow {
+                id: r.get(0)?,
+                source: r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                official_url: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                aliases: parse_string_list(&r.get::<_, Option<String>>(3)?.unwrap_or_default()),
+                alt_urls: parse_string_list(&r.get::<_, Option<String>>(4)?.unwrap_or_default()),
+                popularity_bucket: r.get(5)?,
+                popularity_scope: r.get::<_, Option<String>>(6)?.unwrap_or_default(),
+            })
+        })
+        .map_err(|e| sql_err(Path::new("kb.sqlite"), e))?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| sql_err(Path::new("kb.sqlite"), e))?);
+    }
+    Ok(out)
+}
+
+/// Attach popular-list aliases and a CrUX bucket onto a row that already won
+/// (usually a curated org). Does not change its name or official URL.
+pub fn attach_popularity(
+    conn: &Connection,
+    id: &str,
+    aliases: &[String],
+    alt_urls: &[String],
+    bucket: Option<i64>,
+    scope: &str,
+) -> Result<(), AppError> {
+    conn.execute(
+        "UPDATE kb_record SET aliases = ?1, alt_urls = ?2,
+            popularity_bucket = CASE
+                WHEN popularity_bucket IS NULL THEN ?3
+                WHEN ?3 IS NULL THEN popularity_bucket
+                WHEN ?3 < popularity_bucket THEN ?3
+                ELSE popularity_bucket
+            END,
+            popularity_scope = CASE
+                WHEN popularity_scope IS NULL OR popularity_scope = '' THEN ?4
+                ELSE popularity_scope
+            END
+         WHERE id = ?5",
+        params![
+            serde_json::to_string(aliases).unwrap_or_else(|_| "[]".into()),
+            serde_json::to_string(alt_urls).unwrap_or_else(|_| "[]".into()),
+            bucket,
+            scope,
+            id,
         ],
     )
     .map(|_| ())
@@ -370,6 +474,9 @@ impl Record {
             verify_status: String::new(),
             cached_doc: String::new(),
             updated_at: now_stamp(),
+            popularity_bucket: None,
+            popularity_scope: String::new(),
+            alt_urls: Vec::new(),
         }
     }
 }
@@ -391,5 +498,8 @@ pub fn record_value(rec: &Record) -> Value {
         "verify_status": rec.verify_status,
         "cached_doc": rec.cached_doc,
         "updated_at": rec.updated_at,
+        "popularity_bucket": rec.popularity_bucket,
+        "popularity_scope": rec.popularity_scope,
+        "alt_urls": rec.alt_urls,
     })
 }
