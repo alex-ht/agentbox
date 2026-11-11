@@ -189,20 +189,22 @@ CREATE VIRTUAL TABLE kb_fts USING fts5(
 
 ### 搜尋
 
-`kb search` 只回精簡列表：`id`、`kind`、`name_zh`、`category`、`official_url`、`verify_status`、`score`、`match`。`score` 正規化到 0–1，越高越好；1.0 是名稱或別名在正規化之後完全相同。`match` 是 `exact`、`partial`（查詢是較長名稱的子字串）或 `fuzzy`。
+`kb search` 只回精簡列表：`id`、`kind`、`name_zh`、`category`、`official_url`、`verify_status`、`score`、`match`、`matched_terms`、`which`。頂層還有 `via`（`trigram` 或 `scan`）。`score` 正規化到 0–1，越高越好；1.0 是名稱或別名在正規化之後完全相同。`match` 是 `exact`、`partial`（查詢是較長名稱的子字串）或 `fuzzy`。`matched_terms` 是這筆實際對上的查詢詞。`which` 是 `kb open --which` 的合法值，一定含 `official`，其餘是該筆 `service_urls` 的 `rel`。
 
-正規化會折全形、ASCII 大小寫，以及少量異體（份／分、証／證、台／臺），再去掉空白與標點。查詢正規化後至少 3 個字才送 FTS5 trigram（整句加引號，當成子字串）。trigram 以 Unicode 碼點切，所以「所得稅」命中「綜合所得稅結算申報」。少於 3 個字，或 trigram 零筆（含錯字），改掃描名稱、別名、分類與說明：子字串最高，其次是名稱上的編輯距離（3–6 字允許距離 1，更長允許 2），再來是夠密的 bigram，最後是字元覆蓋窗口（「報」和「稅」在「綜合所得稅結算申報」裡靠得夠近）。門檻是 0.47；沒過的前幾名若達到 0.32，會寫進 `not_found` 的 hint，但不當成命中。
+多個詞是 OR，不是整句黏成一個子字串。查詢先依空白與標點切開，再把已知的泛詞（官網、官方網站、網站、網址、首頁、怎麼、哪裡、申請，以及相近寫法）從詞尾或詞頭剝下來，標成低權重停用詞。每個實詞各自打分；命中的實詞愈多分數愈高，全部命中排在只命中一部分之前。停用詞對上只加一點點，對不上也不會把整筆打成 `not_found`。所以「高鐵 官方網站」仍命中台灣高鐵，「星巴克 杜拜 巧克力 可頌」仍命中星巴克。單一實詞的分數與舊的整句分數相同。
 
-失敗時 hint 一定可複製。沒有資料是 `kb_empty`，hint 指向 `agentbox kb import --curated`。有資料但沒過門檻是 `not_found`：先換較短的正式名稱再 `kb search`，明文寫不要編造網址或步驟，最後才是 `agentbox search "<查詢>" --site gov.tw`。`kb get` 找不到時 hint 指向 `kb search`。
+正規化會折全形、ASCII 大小寫，以及少量異體（份／分、証／證、台／臺），再去掉空白與標點。每個實詞正規化後至少 3 個字才送 FTS5 trigram，多個詞用 OR 取聯集。有任一實詞少於 3 個字，或 trigram 全部落空（含錯字），改掃描名稱、別名、分類與說明：子字串最高，其次是名稱上的編輯距離（3–6 字允許距離 1，更長允許 2），再來是夠密的 bigram，最後是字元覆蓋窗口（「報」和「稅」在「綜合所得稅結算申報」裡靠得夠近）。門檻是 0.47；沒過的前幾名若達到 0.32，會寫進 `not_found` 的 hint，但不當成命中。
+
+失敗時 hint 一定可複製，而且只跟這次查詢有關。沒有資料是 `kb_empty`，hint 指向 `agentbox kb import --curated`。有資料但沒過門檻是 `not_found`：建議拿掉泛詞、把詞拆開各查一次，或改查 hint 裡點名的正式名稱。明文寫不要編造網址或步驟。不會建議與查詢無關的固定詞。最後才是 `agentbox search "<查詢>" --site gov.tw`。`--category` 篩完是 0 筆、但不加篩選有命中時，hint 會寫 `drop --category` 以及 `N hits in other categories:` 後面的分類。`kb get` 找不到時 hint 指向 `kb search`。`kb get` 與每筆 hit 都帶 `which`；`kb open --which` 給了不存在的值時，`bad_args` 的 hint 列出全部合法值（含 `official`）。
 
 ### 開啟與受阻
 
-`kb open --which` 預設 `official`，也可以是該筆 `service_urls` 的 `rel`。只會抓這筆紀錄裡已經有的 URL。HTTP 401／403／429 改成 `fetch_blocked`，`error` 在 `code`、`message` 之後附上 `id`、`official_url`、`url`（外層仍是 `ok:false` 加頂層 `error`，不是把錯誤塞進 `data`）。hint 要模型不要改寫網址，並可改跑 `kb get` 只回報入口。
+`kb open --which` 預設 `official`，也可以是該筆 `service_urls` 的 `rel`。合法值寫在 `kb search` 的 hit 與 `kb get` 的 `which`。只會抓這筆紀錄裡已經有的 URL。HTTP 401／403／429 改成 `fetch_blocked`，`error` 在 `code`、`message` 之後附上 `id`、`official_url`、`url`（外層仍是 `ok:false` 加頂層 `error`，不是把錯誤塞進 `data`）。hint 要模型不要改寫網址，並可改跑 `kb get` 只回報入口。
 
 ### 種子
 
 - 精選表在 `src/kb/curated.toml`，`kb import --curated` 載入（或 `--curated-file` 用同一格式的外部檔）。來源 `curated:kb-v1`，授權標示 `official-url-only`，`last_verified` 為 2026-11-11。狀態接受 `verified`／`connected`／`blocked`／`unverified`，網址必須是 `https`。`unverified` 表示這次有對該官方網址發請求，但沒讀到可核對的內文（逾時、403、挑戰頁）；網址仍只寫查過的那一個，不另編路徑。分類除了原來的 14 個，還有 `food`、`shopping`、`housing`、`education`、`entertainment`、`payment`。
 - `kb import --services FILE` 讀 146973 的 JSON 陣列（線上／臨櫃／電郵傳真三份欄位都認）。`official_url` 優先用 `頁面連結`，否則用申辦、表單或電郵連結；都沒有 http(s) 網址的列略過。來源 `data.gov.tw:146973`，授權 `OGDL-1.0`，`verify_status` 為 `unverified`（整批匯入，沒有逐筆 curl）。說明取服務內容，截到 400 字。分類用標題與說明裡的關鍵字對到生活分類，對不到就用檔名推得的 `online`／`counter`／`other`。
 - 每次匯入覆寫 `ATTRIBUTION.txt`：精選入口的界線，資料集 146973 的顯名（數位發展部、資料集名稱、OGDL-1.0、https://data.gov.tw/license/、三個 JSON 網址），以及 CrUX／Wikidata 的授權。`--replace` 會先刪掉同一 `source` 的舊列。
-- 常用網站：`kb import --crux FILE --scope tw|global --max-rank N` 讀 zakird/crux-top-lists 的 `origin,rank` CSV（可 gzip）。`rank` 是量級桶，只保留 `rank <= N`。用內嵌的 Public Suffix List 折成 eTLD+1；首頁優先清單裡出現過的 `www` 或 apex（https 優先），其餘有用的子網域放進 `alt_urls`（例如 `irs.thsrc.com.tw`）。登入、SSO、admin、API、購物車、結帳、LMS、CDN 這類子網域不當首頁，也不進 `alt_urls`。整個網域若是成人關鍵字、IP、或 `popular_denylist.txt` 裡的基礎設施／廣告網域就丟掉。`github.io`、`blogspot.com`、`wordpress.com` 這類共用後綴整筆略過。`--verify` 才抓首頁，`--enrich` 才查 Wikidata P856（CC0）。產物提交在 `src/kb/popular_tw.json.gz` 與 `popular_global.json.gz`，`kb import --popular` 離線載入。跟精選表同一註冊網域時精選列勝出，只把別名與桶併進去。搜尋先比文字分數，桶（1000 優於 5000）只當同分時的次序，不會把沒過門檻的列變成命中。重現步驟見 `scripts/build_popular_seed.sh`。
+- 常用網站：`kb import --crux FILE --scope tw|global --max-rank N` 讀 zakird/crux-top-lists 的 `origin,rank` CSV（可 gzip）。`rank` 是量級桶，只保留 `rank <= N`。用內嵌的 Public Suffix List 折成 eTLD+1；首頁優先清單裡出現過的 `www` 或 apex（https 優先），其餘有用的子網域放進 `alt_urls`（例如 `irs.thsrc.com.tw`）。登入、SSO、admin、API、購物車、結帳、LMS、CDN 這類子網域不當首頁，也不進 `alt_urls`。整個網域若是成人關鍵字（含 `av` 接數字、`jav`、`porn`、`hentai`、`18+`、成人 TLD）、IP、或 `popular_denylist.txt` 裡的基礎設施／廣告網域就丟掉。名稱會先解 HTML entity，簡體轉繁體（OpenCC 字元表，不改寫專名詞組），只有假名或空的名稱改用網域品牌。匯入時會再清一次，所以已提交的種子也會在載入時過濾。`github.io`、`blogspot.com`、`wordpress.com` 這類共用後綴整筆略過。`--verify` 才抓首頁，`--enrich` 才查 Wikidata P856（CC0）。產物提交在 `src/kb/popular_tw.json.gz` 與 `popular_global.json.gz`，`kb import --popular` 離線載入。跟精選表同一註冊網域時精選列勝出，只把別名與桶併進去。搜尋先比文字分數，桶（1000 優於 5000）只當同分時的次序，不會把沒過門檻的列變成命中。重現步驟見 `scripts/build_popular_seed.sh`。
 - 測試只用內建 TOML、小型 fixture 與 `testutil::serve`，不連外網。

@@ -168,7 +168,7 @@ fn grep(
         return Err(AppError::new(
             "no_match",
             format!("`{keyword}` does not occur in {handle}"),
-            format!("Try a shorter keyword or a synonym, or skim the outline with `agentbox read {handle} --section 1`."),
+            grep_no_match_hint(handle, keyword, sections),
         ));
     }
     let shown = snippets.len();
@@ -190,6 +190,52 @@ fn grep(
             "Read the full context with `agentbox read {handle} --section N`."
         ))
     })
+}
+
+fn grep_no_match_hint(
+    handle: &str,
+    keyword: &str,
+    sections: &[crate::markdown::Section],
+) -> String {
+    let headings: Vec<String> = sections
+        .iter()
+        .filter(|s| !s.heading.trim().is_empty())
+        .take(8)
+        .map(|s| format!("{} {}", s.index, s.heading))
+        .collect();
+    let near = if headings.is_empty() {
+        String::new()
+    } else {
+        format!(" Nearby headings: {}.", headings.join("; "))
+    };
+    let mut alts = Vec::new();
+    let parts: Vec<&str> = keyword
+        .split_whitespace()
+        .filter(|p| p.chars().count() >= 2)
+        .collect();
+    if parts.len() >= 2 {
+        for p in parts.iter().take(3) {
+            alts.push(format!("`{p}`"));
+        }
+    } else {
+        let chars: Vec<char> = keyword.trim().chars().collect();
+        if chars.len() >= 4 {
+            let n = (chars.len() / 2).clamp(2, 4);
+            let short: String = chars.iter().take(n).collect();
+            if short != keyword.trim() {
+                alts.push(format!("`{short}`"));
+            }
+        }
+    }
+    let alt = if alts.is_empty() {
+        " Try a shorter keyword or an alternative term.".to_string()
+    } else {
+        format!(
+            " Try a shorter or alternative term such as {}.",
+            alts.join(" or ")
+        )
+    };
+    format!("`{keyword}` does not occur in {handle}.{near}{alt} Or read a heading with `agentbox read {handle} --section N`.")
 }
 
 fn lower(c: char) -> char {
@@ -301,9 +347,13 @@ mod tests {
             grep: Some("zzz".into()),
             ..args()
         };
-        assert_eq!(
-            read_body("doc:1", "T", body, &a).unwrap_err().code,
-            "no_match"
+        let err = read_body("doc:1", "T", body, &a).unwrap_err();
+        assert_eq!(err.code, "no_match");
+        assert!(err.hint.contains("1 價格"), "{}", err.hint);
+        assert!(
+            err.hint.contains("shorter") || err.hint.contains("alternative"),
+            "{}",
+            err.hint
         );
     }
 

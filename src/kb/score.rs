@@ -1,10 +1,15 @@
 //! Normalized ranking for knowledge-base search.
 //!
 //! Scores are in `0.0..=1.0` (higher is better). `1.0` is an exact normalized
-//! name or alias. Trigram retrieval is separate; this score is what every
-//! candidate, including the short-query and typo fallback, is sorted by.
+//! name or alias. A multi-word query is OR-matched: each term is scored on its
+//! own, and term coverage (how many content terms hit) is mixed into the
+//! score so a full match ranks above a partial one. Generic words such as
+//! 官網 or 官方網站 are low-weight stopwords and do not have to occur.
+//! Trigram retrieval is separate; this score is what every candidate,
+//! including the short-query and typo fallback, is sorted by.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
 
 /// Minimum score returned as a hit.
 pub const HIT_MIN: f64 = 0.47;
@@ -116,6 +121,7 @@ pub fn score_text(query_norm: &str, text: &str, allow_edit: bool) -> f64 {
     best
 }
 
+#[derive(Clone, Copy)]
 pub struct Fields<'a> {
     pub name_zh: &'a str,
     pub name_en: &'a str,
@@ -236,6 +242,349 @@ pub fn round_score(score: f64) -> f64 {
     (score.clamp(0.0, 1.0) * 1000.0).round() / 1000.0
 }
 
+/// One query token. `stop` terms (官網, 網站, 怎麼, …) are low-weight: they
+/// never have to match, and they do not count against coverage.
+#[derive(Debug, Clone, PartialEq)]
+pub struct QueryTerm {
+    pub raw: String,
+    pub norm: String,
+    pub stop: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedQuery {
+    pub terms: Vec<QueryTerm>,
+}
+
+impl PreparedQuery {
+    /// Norms sent to FTS. Stopwords are omitted when a content term exists,
+    /// so a missing 官方網站 does not hide rows that match 高鐵.
+    pub fn recall_norms(&self) -> Vec<String> {
+        let content: Vec<String> = self
+            .terms
+            .iter()
+            .filter(|t| !t.stop)
+            .map(|t| t.norm.clone())
+            .collect();
+        if content.is_empty() {
+            self.terms.iter().map(|t| t.norm.clone()).collect()
+        } else {
+            content
+        }
+    }
+
+    pub fn content_terms(&self) -> Vec<&QueryTerm> {
+        let content: Vec<&QueryTerm> = self.terms.iter().filter(|t| !t.stop).collect();
+        if content.is_empty() {
+            self.terms.iter().collect()
+        } else {
+            content
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct QueryScore {
+    pub score: f64,
+    /// Query terms (original spelling) that cleared [`HIT_MIN`], in query order.
+    pub matched_terms: Vec<String>,
+    /// `exact`, `partial`, `fuzzy`, or `none` when nothing cleared the bar.
+    pub kind: &'static str,
+}
+
+/// Split on whitespace and punctuation, then peel known generic words off
+/// either end so `高鐵官方網站` is `高鐵` plus a stopword.
+pub fn prepare_query(query: &str) -> PreparedQuery {
+    let mut terms = Vec::new();
+    for piece in split_pieces(query) {
+        peel(&piece, &mut terms);
+    }
+    let mut seen = HashSet::new();
+    terms.retain(|t| seen.insert(t.norm.clone()));
+    PreparedQuery { terms }
+}
+
+pub fn score_query(query: &PreparedQuery, f: Fields<'_>) -> QueryScore {
+    if query.terms.is_empty() {
+        return QueryScore {
+            score: 0.0,
+            matched_terms: Vec::new(),
+            kind: "none",
+        };
+    }
+    let term_scores: Vec<f64> = query
+        .terms
+        .iter()
+        .map(|t| {
+            if t.norm.is_empty() {
+                0.0
+            } else {
+                score_record(&t.norm, f)
+            }
+        })
+        .collect();
+    let content: Vec<usize> = query
+        .terms
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| !t.stop)
+        .map(|(i, _)| i)
+        .collect();
+    let use_idx: Vec<usize> = if content.is_empty() {
+        (0..query.terms.len()).collect()
+    } else {
+        content.clone()
+    };
+    let matched: Vec<usize> = use_idx
+        .iter()
+        .copied()
+        .filter(|&i| term_scores[i] >= HIT_MIN)
+        .collect();
+    let mut score = if use_idx.len() == 1 {
+        term_scores[use_idx[0]]
+    } else if matched.is_empty() {
+        use_idx
+            .iter()
+            .map(|&i| term_scores[i])
+            .fold(0.0_f64, f64::max)
+    } else {
+        let coverage = matched.len() as f64 / use_idx.len() as f64;
+        let best = matched
+            .iter()
+            .map(|&i| term_scores[i])
+            .fold(0.0_f64, f64::max);
+        let blended = 0.62 * coverage + 0.38 * best;
+        // One strong term must still surface when the other words miss.
+        if best >= HIT_MIN {
+            blended.max(HIT_MIN)
+        } else {
+            blended
+        }
+    };
+    if !content.is_empty() && content.len() != query.terms.len() && !matched.is_empty() {
+        let stops: Vec<usize> = query
+            .terms
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.stop)
+            .map(|(i, _)| i)
+            .collect();
+        if !stops.is_empty() {
+            let hit = stops.iter().filter(|&&i| term_scores[i] >= HIT_MIN).count();
+            score = (score + 0.02 * (hit as f64 / stops.len() as f64)).min(1.0);
+        }
+    }
+    let matched_terms: Vec<String> = term_scores
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| **s >= HIT_MIN)
+        .map(|(i, _)| query.terms[i].raw.clone())
+        .collect();
+    let kind = match_kind(query, f, &term_scores);
+    QueryScore {
+        score: score.min(1.0),
+        matched_terms,
+        kind,
+    }
+}
+
+fn match_kind(query: &PreparedQuery, f: Fields<'_>, term_scores: &[f64]) -> &'static str {
+    let content = query.content_terms();
+    let mut saw_exact = false;
+    let mut saw_partial = false;
+    let mut saw_fuzzy = false;
+    for t in content {
+        let idx = query
+            .terms
+            .iter()
+            .position(|q| q.norm == t.norm)
+            .unwrap_or(0);
+        if term_scores.get(idx).copied().unwrap_or(0.0) < HIT_MIN {
+            continue;
+        }
+        if field_exact(&t.norm, f) {
+            saw_exact = true;
+        } else if field_partial(&t.norm, f) {
+            saw_partial = true;
+        } else {
+            saw_fuzzy = true;
+        }
+    }
+    if !saw_exact && !saw_partial && !saw_fuzzy {
+        "none"
+    } else if saw_exact && !saw_partial && !saw_fuzzy {
+        "exact"
+    } else if saw_exact || saw_partial {
+        "partial"
+    } else {
+        "fuzzy"
+    }
+}
+
+fn field_exact(norm: &str, f: Fields<'_>) -> bool {
+    let exact = |s: &str| normalize(s) == norm;
+    exact(f.name_zh) || exact(f.name_en) || f.aliases.iter().any(|a| exact(a))
+}
+
+fn field_partial(norm: &str, f: Fields<'_>) -> bool {
+    let partial = |s: &str| {
+        let n = normalize(s);
+        !n.is_empty() && n.contains(norm)
+    };
+    partial(f.name_zh)
+        || partial(f.name_en)
+        || partial(f.description)
+        || f.aliases.iter().any(|a| partial(a))
+}
+
+fn split_pieces(query: &str) -> Vec<String> {
+    let mut cur = String::new();
+    let mut parts = Vec::new();
+    for c in query.chars() {
+        if c.is_whitespace() || is_query_punct(c) {
+            if !cur.is_empty() {
+                parts.push(std::mem::take(&mut cur));
+            }
+        } else {
+            cur.push(c);
+        }
+    }
+    if !cur.is_empty() {
+        parts.push(cur);
+    }
+    parts
+}
+
+fn is_query_punct(c: char) -> bool {
+    matches!(
+        c,
+        ',' | '.'
+            | '，'
+            | '。'
+            | '、'
+            | '；'
+            | ';'
+            | ':'
+            | '：'
+            | '/'
+            | '／'
+            | '|'
+            | '｜'
+            | '('
+            | ')'
+            | '（'
+            | '）'
+            | '['
+            | ']'
+            | '「'
+            | '」'
+            | '"'
+            | '\''
+            | '？'
+            | '?'
+            | '！'
+            | '!'
+            | '+'
+            | '&'
+            | '＆'
+    )
+}
+
+/// Generic words people append to an otherwise specific name. Matched on the
+/// normalized form, longest first, so 官方網站 is one stopword rather than 官方 + 網站.
+const STOP_RAW: &[&str] = &[
+    "官方網站",
+    "官方網址",
+    "官方首頁",
+    "官方網",
+    "官方",
+    "官網",
+    "網站",
+    "網址",
+    "首頁",
+    "主頁",
+    "怎麼辦",
+    "怎麼",
+    "如何",
+    "哪裡",
+    "哪裏",
+    "何處",
+    "在哪裡",
+    "在哪裏",
+    "在哪",
+    "申請",
+    "辦理",
+    "查詢",
+    "是什麼",
+    "是什么",
+    "什麼",
+    "什么",
+    "website",
+    "homepage",
+    "official",
+    "url",
+];
+
+fn stopword_list() -> &'static [String] {
+    static LIST: OnceLock<Vec<String>> = OnceLock::new();
+    LIST.get_or_init(|| {
+        let mut v: Vec<String> = STOP_RAW
+            .iter()
+            .map(|s| normalize(s))
+            .filter(|s| !s.is_empty())
+            .collect();
+        v.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
+        v.dedup();
+        v
+    })
+}
+
+fn is_stop(norm: &str) -> bool {
+    stopword_list().iter().any(|s| s == norm)
+}
+
+fn peel(raw: &str, out: &mut Vec<QueryTerm>) {
+    let norm = normalize(raw);
+    if norm.is_empty() {
+        return;
+    }
+    for (n, stop) in peel_norm(&norm) {
+        let display = if n == norm {
+            raw.to_string()
+        } else {
+            n.clone()
+        };
+        out.push(QueryTerm {
+            raw: display,
+            norm: n,
+            stop,
+        });
+    }
+}
+
+fn peel_norm(norm: &str) -> Vec<(String, bool)> {
+    if is_stop(norm) {
+        return vec![(norm.to_string(), true)];
+    }
+    for sw in stopword_list() {
+        if let Some(rest) = norm.strip_suffix(sw.as_str()) {
+            if !rest.is_empty() {
+                let mut v = peel_norm(rest);
+                v.push((sw.clone(), true));
+                return v;
+            }
+        }
+        if let Some(rest) = norm.strip_prefix(sw.as_str()) {
+            if !rest.is_empty() {
+                let mut v = vec![(sw.clone(), true)];
+                v.extend(peel_norm(rest));
+                return v;
+            }
+        }
+    }
+    vec![(norm.to_string(), false)]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,5 +630,48 @@ mod tests {
         let aliases = vec!["勞保局".to_string()];
         let s = score_record("勞保局", fields("勞動部勞工保險局", &aliases, ""));
         assert_eq!(s, 1.0);
+    }
+
+    #[test]
+    fn single_term_score_matches_score_record() {
+        let f = fields("綜合所得稅結算申報", &[], "辦理綜合所得稅結算申報。");
+        let q = prepare_query("所得稅");
+        let s = score_query(&q, f);
+        assert_eq!(s.score, score_record("所得稅", f));
+        assert_eq!(s.kind, "partial");
+        assert_eq!(s.matched_terms, vec!["所得稅".to_string()]);
+    }
+
+    #[test]
+    fn stopwords_do_not_block_and_coverage_ranks_full_matches_first() {
+        let aliases = vec!["高鐵".to_string()];
+        let rail = fields("台灣高鐵", &aliases, "台灣高速鐵路。");
+        let q = prepare_query("高鐵 官方網站");
+        assert!(q.terms.iter().any(|t| t.stop && t.norm == "官方網站"));
+        let hit = score_query(&q, rail);
+        assert!(hit.score >= HIT_MIN, "score {}", hit.score);
+        assert_eq!(hit.matched_terms, vec!["高鐵".to_string()]);
+        assert_eq!(hit.kind, "exact");
+
+        let glued = prepare_query("高鐵官方網站");
+        let glued_hit = score_query(&glued, rail);
+        assert!(glued_hit.score >= HIT_MIN, "glued {}", glued_hit.score);
+        assert!(glued_hit.matched_terms.iter().any(|t| t == "高鐵"));
+
+        let starbucks_aliases = vec!["星巴克".to_string()];
+        let only_brand = fields("星巴克台灣", &starbucks_aliases, "星巴克台灣。");
+        let both = fields("星巴克巧克力", &starbucks_aliases, "星巴克巧克力可頌。");
+        let q = prepare_query("星巴克 杜拜 巧克力 可頌");
+        let partial = score_query(&q, only_brand);
+        let full = score_query(&q, both);
+        assert!(partial.score >= HIT_MIN, "partial {}", partial.score);
+        assert_eq!(partial.matched_terms, vec!["星巴克".to_string()]);
+        assert!(
+            full.score > partial.score,
+            "full {} should outrank partial {}",
+            full.score,
+            partial.score
+        );
+        assert!(full.matched_terms.len() > partial.matched_terms.len());
     }
 }

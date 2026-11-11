@@ -150,7 +150,7 @@ curl -L -o govotherservice.json https://www.gov.tw/govotherservice.json
 agentbox kb import --services govonlineservice.json --services govcounterservice.json --services govotherservice.json
 ```
 
-`kb search` 的 `score` 是 0 到 1，越高越好。三個字以上走 trigram，所以「所得稅」對得到「綜合所得稅結算申報」。少於三個字、或 trigram 沒有命中時，改做子字串與編輯距離掃描，所以「報稅」仍找得到同一筆，「身分正」找得到「身分證」。找不到時 `hint` 會列出較接近的條目、給一句可複製的 `kb search`，最後才建議 `agentbox search ... --site gov.tw`。
+`kb search` 的 `score` 是 0 到 1，越高越好。多個詞是 OR：多一個知識庫沒有的詞不會整筆落空，對上的詞愈多排愈前面；官網、網站、怎麼這類泛詞權重很低。三個字以上走 trigram，所以「所得稅」對得到「綜合所得稅結算申報」。少於三個字、或 trigram 沒有命中時，改做子字串與編輯距離掃描，所以「報稅」仍找得到同一筆，「身分正」找得到「身分證」。找不到時 `hint` 會依這次查詢建議拿掉泛詞、拆開再查，或改查正式名稱，最後才建議 `agentbox search ... --site gov.tw`。每筆 hit 有 `matched_terms` 與 `which`（`kb open --which` 的合法值）。
 
 ```bash
 agentbox kb search 所得稅 --limit 2
@@ -191,7 +191,7 @@ agentbox --format md kb search 勞保局 --limit 1
 
 ```json
 {"ok":false,"error":{"code":"not_found","message":"no knowledge-base entry matches zzzzqqqq"},
- "hint":"No knowledge-base entry matches zzzzqqqq. Try a shorter official name, for example `agentbox kb search 戶政`. Do not invent URLs or steps. Only if the knowledge base still has nothing, use `agentbox search zzzzqqqq --site gov.tw` as a last resort."}
+ "hint":"No knowledge-base entry matches zzzzqqqq. Split the query into shorter terms, or search the formal official name with `agentbox kb search`. Do not invent URLs or steps. Only if the knowledge base still has nothing, use `agentbox search zzzzqqqq --site gov.tw` as a last resort."}
 ```
 
 `kb open` 的成功輸出和 `fetch` 一樣（`doc`、`title`、`outline`），30 天內的快照會重用（`from_cache: true`）。官方站被擋住時錯誤碼是 `fetch_blocked`，`error` 裡仍有知識庫裡的 `official_url`，這時可以回報網址，但要說明內文沒抓到。

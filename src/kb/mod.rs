@@ -7,6 +7,7 @@ mod curated;
 mod db;
 mod import_gov;
 mod popular;
+mod s2t;
 mod score;
 
 #[cfg(test)]
@@ -85,8 +86,8 @@ pub fn run_search(store: &Store, args: &SearchArgs) -> CmdResult {
     } else {
         args.kind.as_str()
     };
-    let norm = score::normalize(query);
-    if norm.is_empty() {
+    let prepared = score::prepare_query(query);
+    if prepared.terms.is_empty() {
         return Err(AppError::new(
             "bad_args",
             "query has no searchable characters",
@@ -100,20 +101,23 @@ pub fn run_search(store: &Store, args: &SearchArgs) -> CmdResult {
     if db::count(&conn)? == 0 {
         return Err(kb_empty());
     }
-    let recall = db::recall(&conn, &norm)?;
+    let recall_norms = prepared.recall_norms();
+    let recall = db::recall(&conn, &recall_norms)?;
     let via = match &recall {
         Recall::Trigram(_) => "trigram",
         Recall::Scan => "scan",
     };
-    let mut rows = db::load_search_rows(&conn, category, kind)?;
+    // Category is applied after scoring so a too-narrow filter can say how
+    // many hits exist in other categories.
+    let mut rows = db::load_search_rows(&conn, "", kind)?;
     if let Recall::Trigram(ids) = &recall {
         rows.retain(|r| ids.contains(&r.rowid));
     }
-    let mut ranked: Vec<(f64, SearchRow)> = rows
+    let mut ranked: Vec<Ranked> = rows
         .into_iter()
-        .map(|row| {
-            let s = score::score_record(
-                &norm,
+        .filter_map(|row| {
+            let scored = score::score_query(
+                &prepared,
                 score::Fields {
                     name_zh: &row.name_zh,
                     name_en: &row.name_en,
@@ -123,56 +127,76 @@ pub fn run_search(store: &Store, args: &SearchArgs) -> CmdResult {
                     official_url: &row.official_url,
                 },
             );
-            (s, row)
+            if scored.score <= 0.0 {
+                return None;
+            }
+            Some(Ranked {
+                score: scored.score,
+                matched_terms: scored.matched_terms,
+                kind: scored.kind,
+                row,
+            })
         })
-        .filter(|(s, _)| *s > 0.0)
         .collect();
     ranked.sort_by(|a, b| {
-        b.0.total_cmp(&a.0)
+        b.score
+            .total_cmp(&a.score)
             .then_with(|| {
-                score::popularity_key(b.1.popularity_bucket)
-                    .cmp(&score::popularity_key(a.1.popularity_bucket))
+                score::popularity_key(b.row.popularity_bucket)
+                    .cmp(&score::popularity_key(a.row.popularity_bucket))
             })
             .then_with(|| {
-                a.1.name_zh
+                a.row
+                    .name_zh
                     .chars()
                     .count()
-                    .cmp(&b.1.name_zh.chars().count())
+                    .cmp(&b.row.name_zh.chars().count())
             })
-            .then_with(|| a.1.id.cmp(&b.1.id))
+            .then_with(|| a.row.id.cmp(&b.row.id))
     });
 
-    let hits: Vec<&(f64, SearchRow)> = ranked
+    let in_category = |row: &SearchRow| category.is_empty() || row.category == category;
+    let hits: Vec<&Ranked> = ranked
         .iter()
-        .filter(|(s, _)| *s >= score::HIT_MIN)
+        .filter(|r| r.score >= score::HIT_MIN && in_category(&r.row))
         .take(args.limit)
         .collect();
     if hits.is_empty() {
-        let closest: Vec<&(f64, SearchRow)> = ranked
+        let others: Vec<&Ranked> = if category.is_empty() {
+            Vec::new()
+        } else {
+            ranked
+                .iter()
+                .filter(|r| r.score >= score::HIT_MIN && r.row.category != category)
+                .collect()
+        };
+        let closest: Vec<&Ranked> = ranked
             .iter()
-            .filter(|(s, _)| *s >= score::CLOSE_MIN)
+            .filter(|r| in_category(&r.row) && r.score >= score::CLOSE_MIN)
             .take(3)
             .collect();
-        return Err(not_found(query, &closest));
+        return Err(not_found(query, &prepared, &closest, category, &others));
     }
-    let top = &hits[0].1.id;
+    let top = &hits[0].row.id;
     let hint = format!(
-        "Open the top hit with `agentbox kb open {}`, or read the full record with `agentbox kb get {}`. Use only these URLs; do not invent one.",
+        "Open the top hit with `agentbox kb open {}`, or read the full record with `agentbox kb get {}`. Use only these URLs; do not invent one. `matched_terms` shows which query words hit; `which` lists `kb open --which` values.",
         shell_quote(top),
         shell_quote(top)
     );
     let hit_json: Vec<Value> = hits
         .iter()
-        .map(|(s, row)| {
+        .map(|hit| {
             json!({
-                "id": row.id,
-                "kind": row.kind,
-                "name_zh": display_name(row),
-                "category": row.category,
-                "official_url": row.official_url,
-                "verify_status": row.verify_status,
-                "score": score::round_score(*s),
-                "match": hit_match(&norm, row),
+                "id": hit.row.id,
+                "kind": hit.row.kind,
+                "name_zh": display_name(&hit.row),
+                "category": hit.row.category,
+                "official_url": hit.row.official_url,
+                "verify_status": hit.row.verify_status,
+                "score": score::round_score(hit.score),
+                "match": hit.kind,
+                "matched_terms": hit.matched_terms,
+                "which": which_values(&hit.row.service_rels),
             })
         })
         .collect();
@@ -182,6 +206,13 @@ pub fn run_search(store: &Store, args: &SearchArgs) -> CmdResult {
         "hits": hit_json,
     }))
     .hint(hint))
+}
+
+struct Ranked {
+    score: f64,
+    matched_terms: Vec<String>,
+    kind: &'static str,
+    row: SearchRow,
 }
 
 pub fn run_get(store: &Store, id: &str) -> CmdResult {
@@ -206,20 +237,20 @@ pub fn run_get(store: &Store, id: &str) -> CmdResult {
             format!("Find an id with `agentbox kb search {}`.", shell_quote(id)),
         ));
     };
-    let hint = if rec.service_urls.is_empty() {
-        format!(
-            "Open the official page with `agentbox kb open {}`.",
-            shell_quote(&rec.id)
-        )
-    } else {
-        let rels: Vec<&str> = rec.service_urls.iter().map(|u| u.rel.as_str()).collect();
-        format!(
-            "Open the official page with `agentbox kb open {}`. Other links: {}.",
-            shell_quote(&rec.id),
-            rels.join(", ")
-        )
-    };
-    Ok(Output::new(db::record_value(&rec)).hint(hint))
+    let which = which_values(
+        &rec.service_urls
+            .iter()
+            .map(|u| u.rel.clone())
+            .collect::<Vec<_>>(),
+    );
+    let hint = format!(
+        "Open a stored page with `agentbox kb open {}`. Available --which values: {}.",
+        shell_quote(&rec.id),
+        which.join(", ")
+    );
+    let mut data = db::record_value(&rec);
+    data["which"] = json!(which);
+    Ok(Output::new(data).hint(hint))
 }
 
 pub fn run_open(store: &Store, id: &str, which: &str) -> CmdResult {
@@ -297,14 +328,16 @@ pub fn run_import(store: &Store, args: &ImportArgs) -> CmdResult {
         let max_rank = args.max_rank.unwrap_or(5000);
         let month = popular::month_from_path(path);
         let csv = popular::read_crux_file(Path::new(path))?;
-        let (mut recs, stats) = popular::prepare_csv(&csv, &scope, max_rank, &month);
+        let (mut recs, mut stats) = popular::prepare_csv(&csv, &scope, max_rank, &month);
         if args.enrich {
             let _ = popular::enrich_wikidata(&mut recs);
         }
         if args.verify {
             popular::verify_records(&mut recs);
-            let _ = popular::drop_adult_text(&mut recs);
         }
+        let extra_adult = popular::polish_records(&mut recs);
+        stats.dropped_adult += extra_adult;
+        stats.kept_domains = stats.kept_domains.saturating_sub(extra_adult);
         if let Some(out) = &args.write_seed {
             let seed = popular::records_to_seed(&recs, &scope, &month);
             let text = serde_json::to_string(&seed).map_err(|e| {
@@ -427,18 +460,20 @@ fn resolve_url(rec: &Record, which: &str) -> Result<String, AppError> {
             .unwrap_or_default()
     };
     if raw.is_empty() {
-        let rels: Vec<&str> = rec.service_urls.iter().map(|u| u.rel.as_str()).collect();
-        let extra = if rels.is_empty() {
-            "This record has no other links.".to_string()
-        } else {
-            format!("Available --which values: {}.", rels.join(", "))
-        };
+        let rels = which_values(
+            &rec.service_urls
+                .iter()
+                .map(|u| u.rel.clone())
+                .collect::<Vec<_>>(),
+        );
         return Err(AppError::new(
             "bad_args",
             format!("`{which}` is not a link on {}", rec.id),
             format!(
-                "Use `agentbox kb open {}` for the official page. {extra}",
-                shell_quote(&rec.id)
+                "Available --which values: {}. Example: `agentbox kb open {} --which {}`.",
+                rels.join(", "),
+                shell_quote(&rec.id),
+                shell_quote(rels.first().map(String::as_str).unwrap_or("official"))
             ),
         ));
     }
@@ -485,49 +520,99 @@ fn display_name(row: &SearchRow) -> String {
     }
 }
 
-fn hit_match(query_norm: &str, row: &SearchRow) -> &'static str {
-    let exact = |s: &str| score::normalize(s) == query_norm;
-    let partial = |s: &str| {
-        let n = score::normalize(s);
-        !n.is_empty() && n.contains(query_norm)
-    };
-    if exact(&row.name_zh) || exact(&row.name_en) || row.aliases.iter().any(|a| exact(a)) {
-        "exact"
-    } else if partial(&row.name_zh)
-        || partial(&row.name_en)
-        || partial(&row.description)
-        || row.aliases.iter().any(|a| partial(a))
-    {
-        "partial"
-    } else {
-        "fuzzy"
+fn which_values(rels: &[String]) -> Vec<String> {
+    let mut out = vec!["official".to_string()];
+    for rel in rels {
+        if !rel.is_empty() && out.iter().all(|e| !e.eq_ignore_ascii_case(rel)) {
+            out.push(rel.clone());
+        }
     }
+    out
 }
 
-fn not_found(query: &str, closest: &[&(f64, SearchRow)]) -> AppError {
+fn not_found(
+    query: &str,
+    prepared: &score::PreparedQuery,
+    closest: &[&Ranked],
+    category: &str,
+    others: &[&Ranked],
+) -> AppError {
     let quoted = shell_quote(query);
-    let closest_text = if closest.is_empty() {
-        String::new()
+    let mut parts = Vec::new();
+    if category.is_empty() {
+        parts.push(format!("No knowledge-base entry matches {quoted}."));
     } else {
+        parts.push(format!(
+            "No knowledge-base entry matches {quoted} in category {category}."
+        ));
+    }
+    if !others.is_empty() {
+        let mut cats: Vec<&str> = others.iter().map(|r| r.row.category.as_str()).collect();
+        cats.sort_unstable();
+        cats.dedup();
+        let shown = cats.iter().take(6).copied().collect::<Vec<_>>().join(", ");
+        parts.push(format!(
+            "Drop --category; {} hits in other categories: {shown}.",
+            others.len()
+        ));
+    }
+    if !closest.is_empty() {
         let list = closest
             .iter()
-            .map(|(_, row)| format!("{} {}", row.id, display_name(row)))
+            .map(|hit| format!("{} {}", hit.row.id, display_name(&hit.row)))
             .collect::<Vec<_>>()
             .join("; ");
-        format!(" Closest: {list}.")
+        parts.push(format!("Closest: {list}."));
+    }
+    let content = prepared.content_terms();
+    let dropped_stop = prepared.terms.iter().any(|t| t.stop) && !content.is_empty();
+    let mut suggestions = Vec::new();
+    if dropped_stop {
+        let q = content
+            .iter()
+            .map(|t| t.raw.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        suggestions.push(format!(
+            "Drop generic words and retry `agentbox kb search {}`.",
+            shell_quote(&q)
+        ));
+    }
+    if content.len() >= 2 {
+        suggestions.push(format!(
+            "Or search one term at a time, for example `agentbox kb search {}`.",
+            shell_quote(&content[0].raw)
+        ));
+    }
+    if let Some(hit) = closest.first() {
+        let name = display_name(&hit.row);
+        let sq = shell_quote(&name);
+        if sq != quoted {
+            suggestions.push(format!("Try the formal name `agentbox kb search {sq}`."));
+        }
+    }
+    if !others.is_empty() {
+        suggestions.push(format!(
+            "Retry without the filter: `agentbox kb search {quoted}`."
+        ));
+    }
+    if suggestions.is_empty() {
+        suggestions.push(
+            "Split the query into shorter terms, or search the formal official name with `agentbox kb search`."
+                .to_string(),
+        );
+    }
+    parts.push(suggestions.join(" "));
+    parts.push("Do not invent URLs or steps.".to_string());
+    parts.push(format!(
+        "Only if the knowledge base still has nothing, use `agentbox search {quoted} --site gov.tw` as a last resort."
+    ));
+    let message = if category.is_empty() {
+        format!("no knowledge-base entry matches {quoted}")
+    } else {
+        format!("no knowledge-base entry matches {quoted} in category {category}")
     };
-    let retry = closest
-        .first()
-        .map(|(_, row)| shell_quote(&display_name(row)))
-        .filter(|name| name != &quoted)
-        .unwrap_or_else(|| "戶政".to_string());
-    AppError::new(
-        "not_found",
-        format!("no knowledge-base entry matches {quoted}"),
-        format!(
-            "No knowledge-base entry matches {quoted}.{closest_text} Try a shorter official name, for example `agentbox kb search {retry}`. Do not invent URLs or steps. Only if the knowledge base still has nothing, use `agentbox search {quoted} --site gov.tw` as a last resort."
-        ),
-    )
+    AppError::new("not_found", message, parts.join(" "))
 }
 
 fn kb_empty() -> AppError {

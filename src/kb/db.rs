@@ -58,6 +58,8 @@ pub struct SearchRow {
     pub verify_status: String,
     pub description: String,
     pub popularity_bucket: Option<i64>,
+    /// `service_urls` rels, in stored order. `official` is not included.
+    pub service_rels: Vec<String>,
 }
 
 pub enum Recall {
@@ -187,15 +189,25 @@ pub fn fts_count(conn: &Connection) -> Result<i64, AppError> {
         .map_err(|e| sql_err(Path::new("kb.sqlite"), e))
 }
 
-pub fn recall(conn: &Connection, norm: &str) -> Result<Recall, AppError> {
-    if norm.chars().count() < 3 {
+/// OR over each normalized term. A term shorter than 3 characters, or a
+/// trigram miss on every term, falls back to a full scan so one short word
+/// (高鐵) still finds rows the other words do not.
+pub fn recall(conn: &Connection, norms: &[String]) -> Result<Recall, AppError> {
+    if norms.is_empty() || norms.iter().any(|n| n.chars().count() < 3) {
         return Ok(Recall::Scan);
     }
-    match trigram_rowids(conn, norm) {
-        Ok(ids) if ids.is_empty() => Ok(Recall::Scan),
-        Ok(ids) => Ok(Recall::Trigram(ids.into_iter().collect())),
-        Err(e) if short_trigram_query(&e.message) => Ok(Recall::Scan),
-        Err(e) => Err(e),
+    let mut ids = HashSet::new();
+    for norm in norms {
+        match trigram_rowids(conn, norm) {
+            Ok(rows) => ids.extend(rows),
+            Err(e) if short_trigram_query(&e.message) => return Ok(Recall::Scan),
+            Err(e) => return Err(e),
+        }
+    }
+    if ids.is_empty() {
+        Ok(Recall::Scan)
+    } else {
+        Ok(Recall::Trigram(ids))
     }
 }
 
@@ -229,7 +241,7 @@ pub fn load_search_rows(
     let mut stmt = conn
         .prepare(
             "SELECT rowid, id, kind, name_zh, name_en, aliases, category, official_url,
-                    verify_status, description, popularity_bucket
+                    verify_status, description, popularity_bucket, service_urls
              FROM kb_record
              WHERE (?1 = '' OR category = ?1) AND (?2 = 'all' OR kind = ?2)",
         )
@@ -248,6 +260,13 @@ pub fn load_search_rows(
                 verify_status: r.get::<_, Option<String>>(8)?.unwrap_or_default(),
                 description: r.get::<_, Option<String>>(9)?.unwrap_or_default(),
                 popularity_bucket: r.get(10)?,
+                service_rels: parse_service_urls(
+                    &r.get::<_, Option<String>>(11)?.unwrap_or_default(),
+                )
+                .into_iter()
+                .map(|u| u.rel)
+                .filter(|rel| !rel.is_empty())
+                .collect(),
             })
         })
         .map_err(|e| sql_err(Path::new("kb.sqlite"), e))?;

@@ -362,9 +362,108 @@ fn not_found_hint_offers_rephrase_then_search_last() {
     assert!(err.hint.contains("agentbox search"));
     assert!(err.hint.contains("--site gov.tw"));
     assert!(err.hint.contains("Do not invent"));
+    assert!(
+        !err.hint.contains("戶政"),
+        "hint must not suggest an unrelated query: {}",
+        err.hint
+    );
+    assert!(
+        err.hint.contains("formal") || err.hint.contains("Split"),
+        "{}",
+        err.hint
+    );
     let env = envelope(&Err(err));
     assert_eq!(env["ok"], false);
     assert!(env["hint"].as_str().unwrap().contains("last resort"));
+
+    let extra = run_search(
+        &store,
+        &SearchArgs {
+            query: "zzzz 官方網站".into(),
+            category: None,
+            kind: "all".into(),
+            limit: 5,
+        },
+    )
+    .unwrap_err();
+    assert_eq!(extra.code, "not_found");
+    assert!(
+        extra.hint.contains("agentbox kb search zzzz"),
+        "drop the generic word: {}",
+        extra.hint
+    );
+    assert!(!extra.hint.contains("戶政"), "{}", extra.hint);
+}
+
+#[test]
+fn multiword_query_matches_any_term_and_reports_coverage() {
+    let (_tmp, store) = store_dir();
+    import_curated(&store);
+
+    let rail = run_search(
+        &store,
+        &SearchArgs {
+            query: "高鐵 官方網站".into(),
+            category: None,
+            kind: "org".into(),
+            limit: 5,
+        },
+    )
+    .unwrap_or_else(|e| panic!("{} {}", e.message, e.hint));
+    assert!(rail.data["via"].as_str().is_some());
+    assert_eq!(rail.data["hits"][0]["id"], "org:thsrc");
+    let terms = rail.data["hits"][0]["matched_terms"].as_array().unwrap();
+    assert!(terms.iter().any(|t| t == "高鐵"), "{terms:?}");
+    assert!(!terms.iter().any(|t| t == "官方網站"), "{terms:?}");
+    let which = rail.data["hits"][0]["which"].as_array().unwrap();
+    assert!(which.iter().any(|w| w == "official"), "{which:?}");
+
+    let coffee = run_search(
+        &store,
+        &SearchArgs {
+            query: "星巴克 杜拜 巧克力 可頌".into(),
+            category: None,
+            kind: "all".into(),
+            limit: 5,
+        },
+    )
+    .unwrap_or_else(|e| panic!("{} {}", e.message, e.hint));
+    let hits = coffee.data["hits"].as_array().unwrap();
+    let sb = hits
+        .iter()
+        .find(|h| h["id"] == "org:starbucks")
+        .unwrap_or_else(|| {
+            panic!(
+                "星巴克 should still hit when extra words miss: {}",
+                coffee.data
+            )
+        });
+    let terms = sb["matched_terms"].as_array().unwrap();
+    assert!(terms.iter().any(|t| t == "星巴克"), "{terms:?}");
+    assert!(!terms.iter().any(|t| t == "杜拜"), "{terms:?}");
+    assert!(sb["score"].as_f64().unwrap() >= score::HIT_MIN);
+}
+
+#[test]
+fn category_mismatch_points_at_other_categories() {
+    let (_tmp, store) = store_dir();
+    import_curated(&store);
+    let err = run_search(
+        &store,
+        &SearchArgs {
+            query: "星巴克".into(),
+            category: Some("tax".into()),
+            kind: "all".into(),
+            limit: 5,
+        },
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "not_found");
+    let hint = err.hint.to_ascii_lowercase();
+    assert!(hint.contains("drop --category"), "{}", err.hint);
+    assert!(hint.contains("hits in other categories"), "{}", err.hint);
+    assert!(err.hint.contains("food"), "{}", err.hint);
+    assert!(!err.hint.contains("戶政"), "{}", err.hint);
 }
 
 #[test]
@@ -538,7 +637,15 @@ fn open_uses_cache_then_fetch_and_reports_blocked() {
 
     let bad = run_open(&store, "svc:OPEN1", "nope").unwrap_err();
     assert_eq!(bad.code, "bad_args");
-    assert!(bad.hint.contains("apply"));
+    assert!(bad.hint.contains("official"), "{}", bad.hint);
+    assert!(bad.hint.contains("apply"), "{}", bad.hint);
+    assert!(bad.hint.contains("page"), "{}", bad.hint);
+
+    let got = run_get(&store, "svc:OPEN1").unwrap();
+    let which = got.data["which"].as_array().unwrap();
+    assert!(which.iter().any(|w| w == "official"));
+    assert!(which.iter().any(|w| w == "apply"));
+    assert!(which.iter().any(|w| w == "page"));
 }
 
 #[test]
@@ -601,12 +708,27 @@ fn popular_seed_finds_everyday_sites_and_skips_adult() {
         "123av.com",
         "pornhub.com",
         "gstatic.com",
+        "goodav17.com",
+        "rou.video",
     ] {
         assert!(
             seed.records
                 .iter()
                 .all(|r| r.id != format!("pop:{bad}") && !r.official_url.contains(bad)),
             "adult or infra leaked: {bad}"
+        );
+    }
+    for rec in &seed.records {
+        let blob = format!("{} {} {}", rec.name_zh, rec.name_en, rec.aliases.join(" "));
+        assert!(
+            !blob.contains("&#"),
+            "{} still has an HTML entity: {blob}",
+            rec.id
+        );
+        assert!(
+            !blob.chars().any(|c| ('\u{3040}'..='\u{30ff}').contains(&c)),
+            "{} still has a Japanese-only name: {blob}",
+            rec.id
         );
     }
     let (_tmp, store) = store_dir();

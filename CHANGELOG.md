@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### 修正
+
+- `kb search` 多個詞改為 OR，並以對上的詞數加權；官網、網站、怎麼這類泛詞是低權重。`not_found` 的 hint 依這次查詢建議刪詞、拆詞或改查正式名稱，不再固定建議「戶政」。`--category` 篩到 0 筆但其他分類有命中時，hint 會請你拿掉 `--category`。
+- `kb search`／`kb get` 回傳 `which`，`kb open --which` 給錯值時列出合法值。`read --grep` 沒對上時列出鄰近標題。`search` 在 auto 模式下遇到失效的 Tavily 金鑰會改走 DuckDuckGo；`--site tw` 當成 `.tw` 頂級域。
+- 常用網站種子在匯入時解 HTML entity、簡體轉繁體、假名或空白名稱改用網域品牌，並加強成人站過濾。
+
 ### 新增
 
 - **離線知識庫**：`kb search`／`kb get`／`kb open` 查台灣日常生活的官方入口與 data.gov.tw 146973 申辦服務。SQLite（編進執行檔的 FTS5 trigram）放在 `$AGENTBOX_HOME/kb/kb.sqlite`。短查詢與錯字會退回子字串／編輯距離。`kb import` 是給人用的匯入命令，不進 schema。工具順序改為先知識庫、再抓頁，`search` 是最後手段。精選表另含食衣住行育樂（公車、台鐵高鐵訂票與時刻、電影院、外送、租屋等）；連不上的官方網址標 `unverified`，不另編路徑。

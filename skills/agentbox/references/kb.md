@@ -21,9 +21,11 @@ agentbox search "身分證 補發" --site gov.tw --max-results 5
 
 ## What the fields mean
 
-- `score` is 0 to 1. Higher is better. 1.0 is an exact name or alias.
+- `score` is 0 to 1. Higher is better. 1.0 is an exact name or alias. Several words are OR-matched: a hit can cover only some of them, and more matched words rank higher. Full coverage ranks first.
+- `matched_terms` lists the query words that actually hit that row. Generic words (官網, 官方網站, 網站, 網址, 首頁, 怎麼, 哪裡, 申請, and close variants) are low-weight and do not have to appear.
 - `match` is `exact`, `partial` (the words appear inside a longer name), or `fuzzy` (typo or split words such as 報稅 inside 綜合所得稅結算申報).
-- `via` is `trigram` (FTS5 substring, queries of 3+ characters) or `scan` (short query or no trigram hit).
+- `via` is `trigram` (FTS5 substring, when every content word is 3+ characters and trigram found rows) or `scan` (a short word, or trigram found nothing).
+- `which` lists the legal `kb open --which` values for that hit. `official` is always included. Others are that record's service links (`apply`, `form`, `page`, `email`).
 - `verify_status`: `verified` (title checked), `connected` (HTTP 200), `blocked` (domain exists but the body was not read), `unverified` (taken from open data, not re-checked one by one).
 - If `verify_status` is `blocked`, you may report `official_url` and you must say the page text was not fetched. Do not fill in fees or hours from memory.
 - `kb open` returns the same shape as `fetch` (`doc`, `title`, `outline`). `from_cache: true` means a snapshot under 30 days old was reused.
@@ -31,7 +33,9 @@ agentbox search "身分證 補發" --site gov.tw --max-results 5
 
 ## When nothing matches
 
-`error.code` is `not_found`. The hint names closer records when it has any, then a rephrase command, then `agentbox search "身分證 補發" --site gov.tw` as the last resort. Say the knowledge base has no entry. Do not guess a URL.
+`error.code` is `not_found`. The hint is about this query: drop generic or extra words, search one term at a time, or try the formal name it names. It does not suggest an unrelated example. Web search is last, as `agentbox search "身分證 補發" --site gov.tw`. Say the knowledge base has no entry. Do not guess a URL.
+
+If you passed `--category` and the hint says `drop --category` plus `hits in other categories`, rerun without `--category`. The category filter hid the hits.
 
 `kb_empty` means the database was never imported. Ask the human to run `agentbox kb import --curated`. Do not run `kb import` yourself.
 
@@ -46,6 +50,9 @@ Everyday examples: `電影` and `看電影` for cinemas, `公車` and `坐公車
 ```bash
 agentbox kb search 健保 --category nhi
 agentbox kb search 北區國稅局 --kind org
+agentbox kb open org:etax --which official
 ```
+
+`kb open --which` must be one of the `which` values from `kb search` or `kb get`. A bad value returns `bad_args` and lists the legal ones.
 
 臺北國稅局 (`org:ntbt`) and 北區國稅局 (`org:ntbna`) are different offices. 高速公路1968 is `https://1968.freeway.gov.tw`.

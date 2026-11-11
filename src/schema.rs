@@ -252,7 +252,7 @@ pub const SPECS: &[Spec] = &[
         params: &[
             pos("query", "Search query"),
             dflt("max_results", Kind::Int, "5", "Number of results, 1-20"),
-            opt("site", Kind::List, "Only these domains, e.g. [\"europa.eu\"]"),
+            opt("site", Kind::List, "Only these domains or a bare TLD. [\"europa.eu\"] or [\"tw\"] (tw means site:.tw)"),
             opt("exclude_site", Kind::List, "Exclude these domains"),
             opt("days", Kind::Int, "Only results from the last N days"),
             pick("time", &["day", "week", "month", "year"], "Only results from the last day/week/month/year"),
@@ -260,14 +260,14 @@ pub const SPECS: &[Spec] = &[
             flag("deep", "Deeper, more relevant search (Tavily, slower)"),
             flag("answer", "Include a short generated answer (Tavily)"),
             dflt("save", Kind::Int, "0", "Also store the top N results (max 5) as doc handles"),
-            pick("backend", &["auto", "tavily", "ddg", "bing"], "Search backend; auto uses Tavily when a key is configured"),
+            pick("backend", &["auto", "tavily", "ddg", "bing"], "Search backend; auto uses Tavily when a key is configured, and falls back to ddg if that key is rejected"),
         ],
     },
     Spec {
         name: "kb_search",
         path: &["kb", "search"],
         implemented: true,
-        desc: "Search the offline Taiwan knowledge base before any web search. Returns ranked hits (id, name_zh, category, official_url, verify_status, score). Use only URLs from these hits. If nothing matches, follow the hint: rephrase, and only then use web search as a last resort. Never invent a URL.",
+        desc: "Search the offline Taiwan knowledge base before any web search. Returns data.via and ranked hits (id, name_zh, category, official_url, verify_status, score, match, matched_terms, which). Extra words are optional: a hit can match only some terms, and generic words (官網, 網站, 怎麼) are low-weight. which lists kb_open --which values. If nothing matches, follow the hint (drop words, split terms, try the formal name, or drop --category). Web search is the last resort. Never invent a URL.",
         params: &[
             pos("query", "Keywords, e.g. 報稅 or 身分證 補發. Chinese partial words work"),
             opt("category", Kind::Str, "Category slug: portal, household, nhi, tax, motor, labor, welfare, transport, medical, utilities, post, weather, consumer, finance, food, shopping, housing, education, entertainment, payment, general, media, social, search, tech"),
@@ -289,7 +289,7 @@ pub const SPECS: &[Spec] = &[
         desc: "Open a URL that is already stored on a knowledge-base record. Returns a doc handle, title and outline like fetch (reuse with read). Uses a cached snapshot when it is under 30 days old; otherwise fetches that exact URL. Never pass or invent a URL.",
         params: &[
             pos("id", "Record id from kb_search"),
-            dflt("which", Kind::Str, "official", "official, or a service_urls rel such as apply, form, page or email"),
+            dflt("which", Kind::Str, "official", "One of the which values on the kb_search hit or kb_get record: official, or a service_urls rel such as apply, form, page or email"),
         ],
     },
     Spec {
