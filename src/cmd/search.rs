@@ -183,7 +183,19 @@ fn run_inner(store: &Store, args: &SearchArgs, key: Option<&str>, ep: &Endpoints
                 "Set env TAVILY_API_KEY, or run `agentbox config set tavily.api_key -` and paste the key; or use `--backend ddg`.",
             ));
         }
-        ("tavily" | "auto", Some(k)) => ("tavily", tavily(&client, &ep.tavily, k, query, &opts)?),
+        ("tavily", Some(k)) => ("tavily", tavily(&client, &ep.tavily, k, query, &opts)?),
+        ("auto", Some(k)) => match tavily(&client, &ep.tavily, k, query, &opts) {
+            Ok(r) => ("tavily", r),
+            Err(e) if e.code == "invalid_api_key" => {
+                notes.push(
+                    "Tavily rejected the API key (invalid_api_key); fell back to ddg.".into(),
+                );
+                fallback_from = Some("tavily");
+                keyless_notes(&opts, &mut notes);
+                keyless_auto(&client, ep, query, &opts, &mut notes, &mut fallback_from)?
+            }
+            Err(e) => return Err(e),
+        },
         ("bing", _) => {
             keyless_notes(&opts, &mut notes);
             (
@@ -201,22 +213,7 @@ fn run_inner(store: &Store, args: &SearchArgs, key: Option<&str>, ep: &Endpoints
         _ => {
             // auto without a key: DuckDuckGo, then Bing if DDG blocks or fails.
             keyless_notes(&opts, &mut notes);
-            match ddg(&client, &ep.ddg, query, &opts) {
-                Ok(r) if !r.hits.is_empty() => ("ddg", r),
-                first => {
-                    let why = match first {
-                        Ok(_) => "no results".to_string(),
-                        Err(Failure::Blocked(m)) => m,
-                        Err(Failure::Error(e)) => e.message,
-                    };
-                    notes.push(format!("ddg unavailable ({why}); fell back to bing"));
-                    fallback_from = Some("ddg");
-                    (
-                        "bing",
-                        bing(&client, &ep.bing, query, &opts).map_err(failure_error)?,
-                    )
-                }
-            }
+            keyless_auto(&client, ep, query, &opts, &mut notes, &mut fallback_from)?
         }
     };
 
@@ -300,7 +297,8 @@ impl From<&SearchArgs> for Opts {
                         .trim_start_matches("https://")
                         .trim_start_matches("http://")
                         .trim_end_matches('/')
-                        .to_string()
+                        .trim_start_matches('.')
+                        .to_ascii_lowercase()
                 })
                 .filter(|s| !s.is_empty())
                 .collect()
@@ -337,17 +335,71 @@ impl Opts {
     }
 
     /// Query text with site operators, for scraping backends.
+    /// A bare label such as `tw` is a TLD filter (`site:.tw`), not the host `tw`.
     fn decorated_query(&self, q: &str) -> String {
         let mut s = q.to_string();
         if !self.sites.is_empty() {
-            let sites: Vec<String> = self.sites.iter().map(|d| format!("site:{d}")).collect();
+            let sites: Vec<String> = self.sites.iter().map(|d| site_operator(d)).collect();
             s.push(' ');
             s.push_str(&sites.join(" OR "));
         }
         for d in &self.exclude_sites {
-            s.push_str(&format!(" -site:{d}"));
+            s.push(' ');
+            s.push_str(&site_operator(d).replacen("site:", "-site:", 1));
         }
         s
+    }
+}
+
+/// `europa.eu` stays `site:europa.eu`. `tw` becomes `site:.tw`.
+fn site_operator(site: &str) -> String {
+    if site.contains('.') {
+        format!("site:{site}")
+    } else {
+        format!("site:.{site}")
+    }
+}
+
+fn split_sites(sites: &[String]) -> (Vec<String>, Vec<String>) {
+    let mut domains = Vec::new();
+    let mut tlds = Vec::new();
+    for site in sites {
+        if site.contains('.') {
+            domains.push(site.clone());
+        } else if !site.is_empty() {
+            tlds.push(site.clone());
+        }
+    }
+    (domains, tlds)
+}
+
+/// DuckDuckGo, then Bing. `fallback_from` is set to `ddg` only when it is
+/// still empty, so an earlier Tavily failure stays the recorded origin.
+fn keyless_auto(
+    client: &reqwest::blocking::Client,
+    ep: &Endpoints,
+    query: &str,
+    opts: &Opts,
+    notes: &mut Vec<String>,
+    fallback_from: &mut Option<&str>,
+) -> Result<(&'static str, BackendResult), AppError> {
+    match ddg(client, &ep.ddg, query, opts) {
+        Ok(r) if !r.hits.is_empty() => Ok(("ddg", r)),
+        first => {
+            let why = match first {
+                Ok(_) => "no results".to_string(),
+                Err(Failure::Blocked(m)) => m,
+                Err(Failure::Error(e)) => e.message,
+            };
+            notes.push(format!("ddg unavailable ({why}); fell back to bing"));
+            if fallback_from.is_none() {
+                *fallback_from = Some("ddg");
+            }
+            Ok((
+                "bing",
+                bing(client, &ep.bing, query, opts).map_err(failure_error)?,
+            ))
+        }
     }
 }
 
@@ -390,19 +442,37 @@ fn tavily(
     o: &Opts,
 ) -> Result<BackendResult, AppError> {
     let url = format!("{}/search", base.trim_end_matches('/'));
+    // Bare TLDs are not valid include_domains values; Tavily returns 400
+    // bad_request for "tw". Put them in the query as site:.tw instead.
+    let (inc_domains, inc_tlds) = split_sites(&o.sites);
+    let (exc_domains, exc_tlds) = split_sites(&o.exclude_sites);
+    let mut q = query.to_string();
+    if !inc_tlds.is_empty() {
+        let ops = inc_tlds
+            .iter()
+            .map(|t| site_operator(t))
+            .collect::<Vec<_>>()
+            .join(" OR ");
+        q.push(' ');
+        q.push_str(&ops);
+    }
+    for t in &exc_tlds {
+        q.push(' ');
+        q.push_str(&site_operator(t).replacen("site:", "-site:", 1));
+    }
     let mut body = json!({
-        "query": query,
+        "query": q,
         "search_depth": if o.deep { "advanced" } else { "basic" },
         "topic": if o.news { "news" } else { "general" },
         "max_results": o.max_results,
         "include_answer": o.answer,
         "include_raw_content": if o.save > 0 { json!("markdown") } else { json!(false) },
     });
-    if !o.sites.is_empty() {
-        body["include_domains"] = json!(o.sites);
+    if !inc_domains.is_empty() {
+        body["include_domains"] = json!(inc_domains);
     }
-    if !o.exclude_sites.is_empty() {
-        body["exclude_domains"] = json!(o.exclude_sites);
+    if !exc_domains.is_empty() {
+        body["exclude_domains"] = json!(exc_domains);
     }
     if let Some(t) = &o.time {
         body["time_range"] = json!(t);
@@ -958,12 +1028,17 @@ mod tests {
     #[test]
     fn tavily_401_maps_to_invalid_key_and_never_leaks_it() {
         // A hostile/buggy upstream echoing the key must still not leak it.
+        // Explicit --backend tavily does not fall back; auto does (see below).
         let body = format!(r#"{{"detail":{{"error":"Unauthorized: invalid API key {KEY}"}}}}"#);
         let (base, _rx) = serve(vec![http("401 Unauthorized", "application/json", &body)]);
         let tmp = tempfile::tempdir().unwrap();
+        let a = SearchArgs {
+            backend: "tavily".into(),
+            ..args("x")
+        };
         let e = run(
             &Store::new(tmp.path()),
-            &args("x"),
+            &a,
             Some(KEY),
             &eps(&base, DEAD, DEAD),
         )
@@ -976,6 +1051,100 @@ mod tests {
             e.message
         );
         assert!(e.message.contains("[redacted]"));
+    }
+
+    #[test]
+    fn auto_invalid_key_falls_back_to_ddg() {
+        let body = r#"{"detail":{"error":"invalid API key"}}"#;
+        let (tavily_base, _r1) = serve(vec![http("401 Unauthorized", "application/json", body)]);
+        let (ddg_base, rx) = serve(vec![http("200 OK", "text/html", DDG_HTML)]);
+        let tmp = tempfile::tempdir().unwrap();
+        let out = run(
+            &Store::new(tmp.path()),
+            &args("rust"),
+            Some(KEY),
+            &eps(&tavily_base, &format!("{ddg_base}/html/"), DEAD),
+        )
+        .unwrap();
+        assert_eq!(out.data["backend"], "ddg");
+        assert_eq!(out.data["fallback_from"], "tavily");
+        assert!(out.data["notes"].to_string().contains("invalid_api_key"));
+        assert!(!out.data.to_string().contains(KEY));
+        let req = rx.recv().unwrap();
+        assert!(req.line.contains("q=rust"), "{}", req.line);
+        assert_eq!(out.data["results"][0]["url"], "https://www.rust-lang.org/");
+    }
+
+    #[test]
+    fn bare_tld_site_is_site_dot_tld() {
+        let (ddg_base, rx) = serve(vec![http("200 OK", "text/html", DDG_HTML)]);
+        let tmp = tempfile::tempdir().unwrap();
+        let a = SearchArgs {
+            sites: vec!["tw".into()],
+            backend: "ddg".into(),
+            ..args("星巴克")
+        };
+        let _ = run(
+            &Store::new(tmp.path()),
+            &a,
+            None,
+            &eps(DEAD, &format!("{ddg_base}/html/"), DEAD),
+        );
+        let req = rx.recv().unwrap();
+        assert!(
+            req.line.contains("site%3A.tw"),
+            "expected site:.tw in {}",
+            req.line
+        );
+        assert!(
+            !req.line.contains("site%3Atw&") && !req.line.contains("site%3Atw "),
+            "bare site:tw would not be a TLD: {}",
+            req.line
+        );
+
+        let (tavily_base, trx) = serve(vec![http(
+            "200 OK",
+            "application/json",
+            r#"{"results":[{"title":"t","url":"https://www.example.tw/","content":"c"}]}"#,
+        )]);
+        let a = SearchArgs {
+            sites: vec!["tw".into()],
+            backend: "tavily".into(),
+            ..args("星巴克")
+        };
+        run(
+            &Store::new(tmp.path()),
+            &a,
+            Some(KEY),
+            &eps(&tavily_base, DEAD, DEAD),
+        )
+        .unwrap();
+        let sent: Value = serde_json::from_str(&trx.recv().unwrap().body).unwrap();
+        assert!(
+            sent["query"].as_str().unwrap().contains("site:.tw"),
+            "{sent}"
+        );
+        assert!(sent.get("include_domains").is_none(), "{sent}");
+
+        let hits = vec![
+            Hit {
+                title: "tw".into(),
+                url: "https://www.starbucks.com.tw/".into(),
+                ..Hit::default()
+            },
+            Hit {
+                title: "com".into(),
+                url: "https://example.com/".into(),
+                ..Hit::default()
+            },
+        ];
+        let o = Opts {
+            max_results: 10,
+            sites: vec!["tw".into()],
+            ..Opts::default()
+        };
+        let kept: Vec<String> = finalize(hits, &o).into_iter().map(|h| h.title).collect();
+        assert_eq!(kept, vec!["tw"]);
     }
 
     #[test]

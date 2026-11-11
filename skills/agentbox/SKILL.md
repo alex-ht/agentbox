@@ -170,10 +170,10 @@ agentbox config get                                   # which search backend/key
 
 ## What to take from the output
 
-- `kb search`: `data.hits[]` (`id`, `name_zh`, `category`, `official_url`, `verify_status`, `score`, `match`). Then `kb get` or `kb open`.
+- `kb search`: `data.via` (`trigram` or `scan`) and `data.hits[]` (`id`, `name_zh`, `category`, `official_url`, `verify_status`, `score`, `match`, `matched_terms`, `which`). Extra words can miss; `matched_terms` lists the words that hit. `which` lists `kb open --which` values. Then `kb get` or `kb open`.
 - `search`: `data.results[]` with `title`, `url`, `snippet`, and `doc` when saved. `data.backend` tells you the engine.
 - `fetch`: `data.doc` and `data.outline[]` (`section`, `heading`). Then use `read`.
-- `read`: `data.content`. If `data.truncated` is true, continue with `--offset` set to `data.next_offset`. With `--grep`: `data.snippets[]` (`section`, `text`).
+- `read`: `data.content`. If `data.truncated` is true, continue with `--offset` set to `data.next_offset`. With `--grep`: `data.snippets[]` (`section`, `text`). On `no_match`, the hint lists nearby headings and a shorter term.
 - `note list`: `data.notes[]` (`text`, `source`, `tag`) and `data.sources[]`.
 - `extract`: `data.items[]`, each with `context` and `url` (prices, dates, numbers also have `raw`). `data.table` when you used `--save-table`.
 - `table query`: `data.rows[]` and `data.row_count`.

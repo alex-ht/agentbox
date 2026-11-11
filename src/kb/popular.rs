@@ -247,6 +247,8 @@ pub fn prepare_csv(
         records.push(rec);
     }
     apply_overlay(&mut records);
+    let dropped = polish_records(&mut records);
+    stats.dropped_adult += dropped;
     records.sort_by(|a, b| a.id.cmp(&b.id));
     stats.kept_domains = records.len();
     (records, stats)
@@ -388,6 +390,12 @@ pub fn records_to_seed(records: &[Record], scope: &str, month: &str) -> SeedFile
 }
 
 pub fn seed_from_bytes(bytes: &[u8]) -> Result<SeedFile, AppError> {
+    let mut seed = parse_seed_bytes(bytes)?;
+    polish_seed(&mut seed);
+    Ok(seed)
+}
+
+fn parse_seed_bytes(bytes: &[u8]) -> Result<SeedFile, AppError> {
     let mut dec = GzDecoder::new(bytes);
     let mut s = String::new();
     dec.read_to_string(&mut s).map_err(|e| {
@@ -404,6 +412,19 @@ pub fn seed_from_bytes(bytes: &[u8]) -> Result<SeedFile, AppError> {
             "Rebuild the popular seed.",
         )
     })
+}
+
+/// Decode entities, convert Simplified titles, replace Japanese-only or empty
+/// names with a brand taken from the domain, and drop adult rows.
+fn polish_seed(seed: &mut SeedFile) {
+    let mut recs: Vec<Record> = seed
+        .records
+        .iter()
+        .cloned()
+        .map(SeedRecord::into_record)
+        .collect();
+    polish_records(&mut recs);
+    seed.records = recs.iter().map(SeedRecord::from_record).collect();
 }
 
 pub fn load_bundled() -> Result<Vec<Record>, AppError> {
@@ -857,38 +878,361 @@ fn adult_text(s: &str) -> bool {
         "免费a片",
         "免費a片",
         "吃瓜",
+        "人体摄影",
+        "人體攝影",
+        "麻豆",
         "porn",
         "hentai",
         "xxx",
-        "jav ",
+        "xvideo",
+        "18+",
+        "18＋",
+        "アダルト",
     ];
-    PARTS.iter().any(|p| l.contains(p))
+    if PARTS.iter().any(|p| l.contains(p)) || l.contains('🔞') {
+        return true;
+    }
+    has_adult_av_token(&l) || has_jav_token(&l)
+}
+
+fn has_jav_token(l: &str) -> bool {
+    // "java" / "javascript" are not adult. "javbus" and "javhd" are.
+    let bytes = l.as_bytes();
+    let mut i = 0;
+    while i + 2 < bytes.len() {
+        if bytes[i] == b'j' && bytes[i + 1] == b'a' && bytes[i + 2] == b'v' {
+            let prev_ok = i == 0 || !bytes[i - 1].is_ascii_alphanumeric();
+            let next = i + 3;
+            let next_is_a = next < bytes.len() && bytes[next] == b'a';
+            if prev_ok && !next_is_a {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+/// `av` as its own token, or `av` followed by digits anywhere (`av123`, `goodav17`).
+fn has_adult_av_token(l: &str) -> bool {
+    let bytes = l.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'a' && bytes[i + 1] == b'v' {
+            let next = i + 2;
+            let next_byte = bytes.get(next).copied();
+            let digits_after = matches!(next_byte, Some(b) if b.is_ascii_digit());
+            let boundary_before = i == 0 || !bytes[i - 1].is_ascii_alphabetic();
+            let boundary_after = match next_byte {
+                None => true,
+                Some(b) if !b.is_ascii_alphabetic() => true,
+                _ => false,
+            };
+            if (digits_after || (boundary_before && boundary_after)) && !safe_av_word(l, i) {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+fn safe_av_word(l: &str, av_at: usize) -> bool {
+    let bytes = l.as_bytes();
+    let mut start = av_at;
+    while start > 0 && bytes[start - 1].is_ascii_alphanumeric() {
+        start -= 1;
+    }
+    let mut end = av_at;
+    while end < bytes.len() && bytes[end].is_ascii_alphanumeric() {
+        end += 1;
+    }
+    let word = &l[start..end];
+    matches!(
+        word,
+        "avatar"
+            | "aviation"
+            | "avenue"
+            | "avaya"
+            | "available"
+            | "java"
+            | "javascript"
+            | "javadoc"
+    )
 }
 
 /// Drop rows whose homepage title is adult. Host filters cannot see this.
 pub fn drop_adult_text(records: &mut Vec<Record>) -> usize {
     let before = records.len();
-    records.retain(|r| {
-        !adult_text(&r.name_zh)
-            && !adult_text(&r.name_en)
-            && !adult_domain(r.id.trim_start_matches("pop:"))
-    });
+    records.retain(|r| !record_is_adult(r));
     before - records.len()
 }
 
+/// Clean popular-site names and drop adult rows. Returns how many were dropped.
+/// Safe to run more than once.
+pub fn polish_records(records: &mut Vec<Record>) -> usize {
+    for rec in records.iter_mut() {
+        decode_record_text(rec);
+    }
+    let mut dropped = drop_adult_text(records);
+    for rec in records.iter_mut() {
+        polish_names(rec);
+    }
+    dropped += drop_adult_text(records);
+    dropped
+}
+
+fn record_is_adult(rec: &Record) -> bool {
+    let domain = rec.id.trim_start_matches("pop:");
+    adult_text(&rec.name_zh)
+        || adult_text(&rec.name_en)
+        || rec.aliases.iter().any(|a| adult_text(a))
+        || adult_domain(domain)
+}
+
+fn decode_record_text(rec: &mut Record) {
+    rec.name_zh = decode_entities(&rec.name_zh);
+    rec.name_en = decode_entities(&rec.name_en);
+    for alias in &mut rec.aliases {
+        *alias = decode_entities(alias);
+    }
+}
+
+fn polish_names(rec: &mut Record) {
+    let domain = rec.id.trim_start_matches("pop:").to_string();
+    if is_junk_title(&rec.name_zh) {
+        rec.name_zh.clear();
+    } else if is_japanese_name(&rec.name_zh) {
+        rec.name_zh = salvage_latin(&rec.name_zh).unwrap_or_default();
+    } else {
+        rec.name_zh = super::s2t::to_traditional(&rec.name_zh);
+        rec.name_zh = title_name(&rec.name_zh);
+        if is_junk_title(&rec.name_zh) {
+            rec.name_zh.clear();
+        }
+    }
+    if is_junk_title(&rec.name_en) {
+        rec.name_en.clear();
+    } else if is_japanese_name(&rec.name_en) {
+        rec.name_en = salvage_latin(&rec.name_en).unwrap_or_default();
+    } else if !rec.name_en.is_empty() {
+        rec.name_en = super::s2t::to_traditional(&rec.name_en);
+        rec.name_en = title_name(&rec.name_en);
+    }
+    rec.aliases = rec.aliases.iter().filter_map(|a| clean_alias(a)).collect();
+    let zh_empty = rec.name_zh.trim().is_empty();
+    let en_empty = rec.name_en.trim().is_empty() || is_domainish(&rec.name_en, &domain);
+    if zh_empty && en_empty {
+        rec.name_en = brand_from_domain(&domain);
+        if !rec.description.contains("display name fell back") {
+            rec.description
+                .push_str(" Display name fell back to the domain brand.");
+        }
+    }
+    if rec.name_zh.trim().is_empty() {
+        rec.name_zh.clear();
+    }
+}
+
+fn clean_alias(alias: &str) -> Option<String> {
+    if is_junk_title(alias) || adult_text(alias) {
+        return None;
+    }
+    if is_japanese_name(alias) {
+        return salvage_latin(alias).filter(|s| s.chars().count() >= 2);
+    }
+    let s = title_name(&super::s2t::to_traditional(alias));
+    if s.chars().count() < 2 || is_junk_title(&s) || adult_text(&s) {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+fn is_japanese_name(s: &str) -> bool {
+    s.chars().any(is_kana)
+}
+
+fn is_kana(c: char) -> bool {
+    ('\u{3040}'..='\u{30ff}').contains(&c) || ('\u{ff66}'..='\u{ff9d}').contains(&c)
+}
+
+/// Keep a Latin brand embedded in a Japanese title (`AppMedia（アップメディア）`).
+fn salvage_latin(s: &str) -> Option<String> {
+    let latin: String = s
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == ' ' || c == '-' || c == '&' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
+    let latin = latin.split_whitespace().collect::<Vec<_>>().join(" ");
+    let letters = latin.chars().filter(|c| c.is_ascii_alphabetic()).count();
+    (letters >= 3).then_some(latin)
+}
+
+fn is_junk_title(s: &str) -> bool {
+    let l = s.to_ascii_lowercase();
+    let t = l.trim();
+    t.is_empty()
+        || t == "403"
+        || t == "404"
+        || l.contains("just a moment")
+        || l.contains("attention required")
+        || l.contains("access denied")
+        || l.contains("making sure you")
+        || l.contains("not a bot")
+        || l.contains("age verification")
+        || l.contains("captcha")
+        || l.contains("human verification")
+}
+
+fn is_domainish(name: &str, domain: &str) -> bool {
+    let n = name.trim().trim_end_matches('/').to_ascii_lowercase();
+    n.is_empty() || n == domain || n == format!("www.{domain}")
+}
+
+fn brand_from_domain(domain: &str) -> String {
+    let label = domain.split('.').next().unwrap_or(domain);
+    let mut out = String::new();
+    let mut cap = true;
+    for c in label.chars() {
+        if c == '-' || c == '_' {
+            if !out.ends_with(' ') && !out.is_empty() {
+                out.push(' ');
+            }
+            cap = true;
+            continue;
+        }
+        if cap {
+            out.extend(c.to_uppercase());
+            cap = false;
+        } else {
+            out.extend(c.to_lowercase());
+        }
+    }
+    let out = out.trim().to_string();
+    if out.is_empty() {
+        domain.to_string()
+    } else {
+        out
+    }
+}
+
+fn decode_entities(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(start) = rest.find('&') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        if let Some(end) = after.find(';') {
+            if let Some(ch) = decode_one(&after[..end]) {
+                out.push(ch);
+                rest = &after[end + 1..];
+                continue;
+            }
+        }
+        out.push('&');
+        rest = &rest[start + 1..];
+    }
+    out.push_str(rest);
+    let out = strip_broken_entities(&out);
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Titles are truncated to 40 characters, which can cut an entity in half
+/// (`&#260` with no `;`). Drop those fragments after real entities are decoded.
+fn strip_broken_entities(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '&' {
+            let mut j = i + 1;
+            if chars.get(j) == Some(&'#') {
+                j += 1;
+                if chars.get(j) == Some(&'x') || chars.get(j) == Some(&'X') {
+                    j += 1;
+                }
+                let digits_from = j;
+                while j < chars.len() && chars[j].is_ascii_hexdigit() {
+                    j += 1;
+                }
+                let closed = chars.get(j) == Some(&';');
+                if !closed && j > digits_from {
+                    i = j;
+                    continue;
+                }
+            } else if chars.get(j).is_some_and(|c| c.is_ascii_alphabetic()) {
+                while j < chars.len() && chars[j].is_ascii_alphabetic() {
+                    j += 1;
+                }
+                if chars.get(j) != Some(&';') && j > i + 1 {
+                    i = j;
+                    continue;
+                }
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+fn decode_one(entity: &str) -> Option<char> {
+    if let Some(hex) = entity
+        .strip_prefix("#x")
+        .or_else(|| entity.strip_prefix("#X"))
+    {
+        return char::from_u32(u32::from_str_radix(hex, 16).ok()?);
+    }
+    if let Some(dec) = entity.strip_prefix('#') {
+        return char::from_u32(dec.parse().ok()?);
+    }
+    Some(match entity {
+        "amp" => '&',
+        "lt" => '<',
+        "gt" => '>',
+        "quot" => '"',
+        "apos" => '\'',
+        "nbsp" => '\u{00a0}',
+        "mdash" => '—',
+        "ndash" => '–',
+        _ => return None,
+    })
+}
+
 fn adult_domain(domain: &str) -> bool {
-    is_adult_host(domain) || domain.split(['.', '-']).any(adult_av_label)
+    is_adult_host(domain) || adult_tld(domain) || domain.split(['.', '-']).any(adult_av_label)
+}
+
+fn adult_tld(domain: &str) -> bool {
+    const TLDS: &[&str] = &["xxx", "adult", "porn", "sex"];
+    domain.rsplit('.').next().is_some_and(|t| TLDS.contains(&t))
 }
 
 fn adult_av_label(label: &str) -> bool {
     let l = label.to_ascii_lowercase();
     if matches!(
         l.as_str(),
-        "avatar" | "aviation" | "avenue" | "avaya" | "available"
+        "avatar"
+            | "aviation"
+            | "avenue"
+            | "avaya"
+            | "available"
+            | "java"
+            | "javascript"
+            | "javadoc"
     ) {
         return false;
     }
-    if l.contains("jav") || l.contains("chigua") || l.contains("hcomic") {
+    if l.contains("chigua") || l.contains("hcomic") || l.contains("madou") {
+        return true;
+    }
+    if has_jav_token(&l) || has_adult_av_token(&l) {
         return true;
     }
     let digits = l.chars().any(|c| c.is_ascii_digit());
@@ -1022,6 +1366,10 @@ https://www.school.edu.tw,5000
 https://foo.github.io,1000
 https://not-a-url,1000
 https://www.late.example,10000
+https://www.goodav17.com,1000
+https://javbus.com,1000
+https://cdn.example.xxx,1000
+https://www.avatar.com,5000
 ";
 
     #[test]
@@ -1039,7 +1387,14 @@ https://www.late.example,10000
                 || id.contains("gstatic")
                 || id.contains("123av")
                 || id.contains("52av")
+                || id.contains("goodav17")
+                || id.contains("javbus")
+                || id.contains(".xxx")
         }));
+        assert!(
+            ids.contains(&"pop:avatar.com"),
+            "avatar is not adult: {ids:?}"
+        );
         assert!(!ids
             .iter()
             .any(|id| id.contains("onlybank") || id.contains("github.io")));
@@ -1063,6 +1418,46 @@ https://www.late.example,10000
         let school = recs.iter().find(|r| r.id == "pop:school.edu.tw").unwrap();
         assert!(school.official_url.contains("www.school.edu.tw"));
         assert!(school.alt_urls.iter().all(|u| !u.contains("moodle")));
+    }
+
+    #[test]
+    fn polish_decodes_entities_converts_simplified_and_replaces_japanese() {
+        let mut poke = Record::blank("pop:52poke.com", "org");
+        poke.name_zh = "神奇宝贝部落格 &#8211; 有多少宝可梦就有多少梦想".into();
+        poke.name_en = "52poke.com".into();
+        let mut jp = Record::blank("pop:animanch.com", "org");
+        jp.name_en = "あにまんch".into();
+        let mut mixed = Record::blank("pop:appmedia.jp", "org");
+        mixed.name_en = "AppMedia（アップメディア）".into();
+        let mut junk = Record::blank("pop:amnesty.tw", "org");
+        junk.name_en = "Making sure you&#39;re not a bot!".into();
+        let mut adult = Record::blank("pop:rou.video", "org");
+        adult.name_en = "18+ 🔞".into();
+        let mut entity = Record::blank("pop:anns.tw", "org");
+        entity.name_zh = "Ann&#x27;S 寬腳友善第一品牌".into();
+        let mut recs = vec![poke, jp, mixed, junk, adult, entity];
+        let dropped = polish_records(&mut recs);
+        assert_eq!(dropped, 1, "18+ row should be dropped");
+        assert!(recs.iter().all(|r| r.id != "pop:rou.video"));
+        let poke = recs.iter().find(|r| r.id == "pop:52poke.com").unwrap();
+        assert!(!poke.name_zh.contains('&'), "{}", poke.name_zh);
+        assert!(poke.name_zh.contains('寶'), "{}", poke.name_zh);
+        assert!(poke.name_zh.contains("神奇"), "{}", poke.name_zh);
+        assert!(!poke.name_zh.contains('贝'), "{}", poke.name_zh);
+        let jp = recs.iter().find(|r| r.id == "pop:animanch.com").unwrap();
+        assert_eq!(jp.name_en, "Animanch");
+        assert!(jp.description.contains("fell back"));
+        let mixed = recs.iter().find(|r| r.id == "pop:appmedia.jp").unwrap();
+        assert_eq!(mixed.name_en, "AppMedia");
+        assert!(!mixed
+            .name_en
+            .chars()
+            .any(|c| ('\u{3040}'..='\u{30ff}').contains(&c)));
+        let junk = recs.iter().find(|r| r.id == "pop:amnesty.tw").unwrap();
+        assert_eq!(junk.name_en, "Amnesty");
+        let anns = recs.iter().find(|r| r.id == "pop:anns.tw").unwrap();
+        assert!(anns.name_zh.contains("Ann'S"), "{}", anns.name_zh);
+        assert!(!anns.name_zh.contains("&#"), "{}", anns.name_zh);
     }
 
     #[test]

@@ -25,7 +25,7 @@ agentbox search "zero trust architecture vendor comparison" --deep --max-results
 |---|---|
 | `--max-results N` | 3-8 is enough. Max 20. |
 | `--save N` | Store the top N results as docs (max 5). Each saved result gets a `doc` field. |
-| `--site D` | Only one domain, e.g. `europa.eu`, `sec.gov`, `github.com`. Repeat for several. |
+| `--site D` | One domain (`europa.eu`, `sec.gov`) or a bare TLD (`tw` means `site:.tw`). Repeat for several. |
 | `--exclude-site D` | Drop noisy domains. Repeatable. |
 | `--time day\|week\|month\|year`, `--days N` | Recent results only. |
 | `--news` | News sources only (Tavily). |
@@ -41,7 +41,7 @@ Query tips:
 
 ## Keyless backends (ddg, bing)
 
-Without a Tavily key, `data.backend` is `ddg` or `bing`, and `data.notes` may explain a fallback.
+Without a Tavily key, `data.backend` is `ddg` or `bing`, and `data.notes` may explain a fallback. In `auto` mode an invalid or expired Tavily key (`invalid_api_key`) also falls back to DuckDuckGo instead of failing. `data.fallback_from` is `tavily` in that case. `--backend tavily` still returns the key error.
 These results can be loosely matched. Do this:
 
 1. Check each title and URL against the question. Ignore off-topic results.
@@ -64,7 +64,7 @@ agentbox read doc:4 --offset 4000 --max-chars 3000
 - `read --grep WORD` returns `data.snippets[]` with `section` and `text`, plus `data.total_matches`. Grep is case-insensitive. One word or a short phrase works best.
 - `read --section N` returns one section in `data.content`.
 - If `data.truncated` is true, continue with `--offset` set to `data.next_offset`.
-- Error `no_match`: try a synonym or a shorter word, or read `--section 1` to see the page start.
+- Error `no_match`: the hint lists nearby section headings and a shorter or alternative term. Try one of those, or read the heading it names with `--section N`.
 - Error `http_error` with 403/404: the site blocks the fetch or the page moved. Try another result or the site's homepage.
 
 ## Notes

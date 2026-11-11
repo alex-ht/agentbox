@@ -108,12 +108,23 @@ fn is_scalar(v: &Value) -> bool {
     !matches!(v, Value::Array(_) | Value::Object(_))
 }
 
+/// A table cell: a scalar, or a short list of scalars (`matched_terms`, `which`).
+fn as_cell(v: &Value) -> Option<String> {
+    match v {
+        Value::Array(items) if items.iter().all(is_scalar) => {
+            Some(items.iter().map(scalar).collect::<Vec<_>>().join(", "))
+        }
+        v if is_scalar(v) => Some(scalar(v)),
+        _ => None,
+    }
+}
+
 fn is_table(items: &[Value]) -> bool {
     !items.is_empty()
         && items.iter().all(|it| match it {
             Value::Object(m) => m
                 .values()
-                .all(|v| is_scalar(v) && !v.as_str().is_some_and(|s| s.contains('\n'))),
+                .all(|v| as_cell(v).is_some_and(|s| !s.contains('\n'))),
             _ => false,
         })
 }
@@ -137,7 +148,7 @@ fn render_table(items: &[Value], out: &mut String) {
             .iter()
             .map(|c| {
                 it.get(c)
-                    .map(scalar)
+                    .and_then(as_cell)
                     .unwrap_or_default()
                     .replace('|', "\\|")
             })
