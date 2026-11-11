@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 pub const TOP_HELP: &str = "\
 Output is one JSON line: {\"ok\":true,\"data\":...,\"hint\":...} or
 {\"ok\":false,\"error\":{\"code\",\"message\"},\"hint\":...}. Use --format md for Markdown.
-State (docs, notes, tables) lives in $AGENTBOX_HOME (default ~/.agentbox).
+State (docs, notes, tables, kb) lives in $AGENTBOX_HOME (default ~/.agentbox).
 
 Examples:
   agentbox fetch https://example.com
@@ -183,6 +183,10 @@ pub enum Cmd {
     #[command(subcommand)]
     Report(ReportCmd),
 
+    /// Offline knowledge base of official Taiwan sites and services
+    #[command(subcommand)]
+    Kb(KbCmd),
+
     /// Settings such as the Tavily and Stooq API keys (stored in the state dir)
     #[command(subcommand)]
     Config(ConfigCmd),
@@ -331,6 +335,62 @@ pub enum SkillCmd {
         /// Actually write the files
         #[arg(long)]
         apply: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum KbCmd {
+    /// Ranked official-site and service matches (check here before web search)
+    #[command(
+        after_help = "Examples:\n  agentbox kb search 報稅\n  agentbox kb search \"身分證 補發\" --kind service --limit 5\n  agentbox kb search 健保 --category nhi"
+    )]
+    Search {
+        /// Keywords; Chinese partial words and short queries work
+        query: String,
+        /// Only this category slug, e.g. tax, household, nhi
+        #[arg(long)]
+        category: Option<String>,
+        /// Record kind
+        #[arg(long, default_value = "all", value_parser = ["org", "service", "all"])]
+        kind: String,
+        /// Maximum hits (1-50)
+        #[arg(long, default_value_t = 8)]
+        limit: usize,
+    },
+    /// Full record for one id, including service links and attribution
+    #[command(after_help = "Example:\n  agentbox kb get org:ris")]
+    Get {
+        /// Record id from kb search, e.g. org:ris or svc:CODE
+        id: String,
+    },
+    /// Open a URL stored on a record; returns a doc handle like fetch
+    #[command(
+        after_help = "Uses a fresh cached snapshot when one exists, otherwise fetches that exact URL.\nThe fetch timeout is 30 seconds. This command never invents a URL.\n\nExamples:\n  agentbox kb open org:etax\n  agentbox kb open svc:ABC --which apply"
+    )]
+    Open {
+        /// Record id
+        id: String,
+        /// official, or a service_urls rel such as apply, form, page or email
+        #[arg(long, default_value = "official")]
+        which: String,
+    },
+    /// Load curated sites and/or a data.gov.tw 146973 JSON file (human setup)
+    #[command(
+        after_help = "Not an agent tool. Writes $AGENTBOX_HOME/kb/kb.sqlite and ATTRIBUTION.txt.\n\nExamples:\n  agentbox kb import --curated\n  agentbox kb import --services govonlineservice.json\n  agentbox kb import --curated --services govonlineservice.json --services govcounterservice.json --services govotherservice.json --replace"
+    )]
+    Import {
+        /// Load the built-in curated official sites
+        #[arg(long, conflicts_with = "curated_file")]
+        curated: bool,
+        /// Load a curated TOML file (same shape as the built-in list)
+        #[arg(long)]
+        curated_file: Option<String>,
+        /// A data.gov.tw dataset 146973 JSON file (repeatable)
+        #[arg(long = "services")]
+        services: Vec<String>,
+        /// Drop previous rows from the same source before importing
+        #[arg(long)]
+        replace: bool,
     },
 }
 

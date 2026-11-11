@@ -77,7 +77,13 @@ jobs:
         env:
           # Static CRT so the .exe has no VC++ runtime dependency.
           RUSTFLAGS: ${{ contains(matrix.target, 'msvc') && '-C target-feature=+crt-static' || '' }}
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: |
+          # Bundled SQLite is C. The musl target needs a musl C compiler.
+          if [[ "${{ matrix.target }}" == *musl* ]]; then
+            export CC_x86_64_unknown_linux_musl=musl-gcc
+            export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
+          fi
+          cargo build --release --locked --target ${{ matrix.target }}
       - name: Smoke test
         shell: bash
         run: |

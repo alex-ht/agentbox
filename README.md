@@ -69,8 +69,10 @@ Move-Item -Force "agentbox-$v-x86_64-pc-windows-msvc\agentbox.exe" $dir
 | `table show\|query\|import\|export` | `tbl:N` 或 CSV／TSV／JSON／Markdown 表格的檢視、過濾、排序、分組加總與匯出，不用寫程式 | ✅ 可用 |
 | `quote get\|history\|search` | 股票、指數、匯率、加密貨幣的即時報價、歷史價格與代號查詢（Yahoo，免金鑰；Stooq 備援） | ✅ 可用 |
 | `market search\|get\|trending\|history` | Polymarket 預測市場：關鍵字搜尋、熱門、單一活動細節與機率走勢（唯讀，免金鑰） | ✅ 可用 |
+| `kb search\|get\|open` | 台灣日常生活離線知識庫：機關與申辦服務的官方網址。先查這裡，再 `fetch`／`read`，`search` 是最後手段 | ✅ 可用 |
+| `kb import` | 把精選官網與 data.gov.tw 146973 的 JSON 寫進本機資料庫（給人用，不進 schema） | ✅ 可用 |
 
-所有子命令都已實作，`agentbox schema --implemented-only` 會列出全部 27 個工具（`config`、`skill`、`schema`、`call` 是給人用的，不算在內）。
+所有給 agent 的子命令都已實作，`agentbox schema --implemented-only` 會列出全部 30 個工具（`config`、`skill`、`schema`、`call`、`kb import` 是給人用的，不算在內）。
 
 ## 搜尋與 Tavily 金鑰
 
@@ -126,6 +128,75 @@ agentbox config unset tavily.api_key
 ```
 
 設定檔在 Unix 上會以 0600 權限寫入。agentbox 的任何輸出、錯誤訊息和 hint 都不會印出金鑰本身；`config get` 只顯示前綴、長度和一組無法還原的短指紋。
+
+## 離線知識庫：`kb`
+
+小模型不該靠參數記憶回答「台灣官網在哪、這件事去哪裡辦」。`kb` 把查過的官方入口與政府申辦服務放在本機，工具順序是：
+
+1. `kb search`／`kb get`
+2. `kb open` 或 `fetch`（網址必須來自知識庫輸出），再 `read`
+3. `note add`，`source` 填那個網址或 `doc:N`
+4. `search`（DuckDuckGo）只在知識庫沒有、官方頁抓不到內文、或題目明顯超出台灣日常生活時才用，能加 `--site gov.tw` 就加
+
+知識庫不會編造網址。沒核對過的網域（例如 my.gov.tw、medcloud.nhi.gov.tw、www.cwa.gov.tw 首頁）故意不收。
+
+資料在 `$AGENTBOX_HOME/kb/kb.sqlite`（FTS5 trigram 索引），顯名聲明在同目錄的 `ATTRIBUTION.txt`。SQLite 編進執行檔，不需要系統上的 sqlite。內建 75 筆精選入口（14 個生活分類，`verify_status` 為 `verified`／`connected`／`blocked`），申辦服務用 data.gov.tw 資料集 146973（政府資料開放授權條款第 1 版，提供機關是數位發展部）：
+
+```bash
+agentbox kb import --curated
+curl -L -o govonlineservice.json https://www.gov.tw/govonlineservice.json
+curl -L -o govcounterservice.json https://www.gov.tw/govcounterservice.json
+curl -L -o govotherservice.json https://www.gov.tw/govotherservice.json
+agentbox kb import --services govonlineservice.json --services govcounterservice.json --services govotherservice.json
+```
+
+`kb search` 的 `score` 是 0 到 1，越高越好。三個字以上走 trigram，所以「所得稅」對得到「綜合所得稅結算申報」。少於三個字、或 trigram 沒有命中時，改做子字串與編輯距離掃描，所以「報稅」仍找得到同一筆，「身分正」找得到「身分證」。找不到時 `hint` 會列出較接近的條目、給一句可複製的 `kb search`，最後才建議 `agentbox search ... --site gov.tw`。
+
+```bash
+agentbox kb search 所得稅 --limit 2
+agentbox kb search 報稅
+agentbox kb search 身分正 --kind service
+agentbox kb get org:etax
+agentbox kb open org:etax
+agentbox --format md kb search 勞保局 --limit 1
+```
+
+命中（trigram，別名完全相符，服務名稱是部分相符）：
+
+```json
+{"ok":true,"data":{"query":"所得稅","via":"trigram","hits":[
+ {"id":"org:etax","kind":"org","name_zh":"財政部稅務入口網","category":"tax","official_url":"https://www.etax.nat.gov.tw/etwmain/","verify_status":"verified","score":1.0,"match":"exact"},
+ {"id":"svc:TAX-TEST-1","kind":"service","name_zh":"綜合所得稅結算申報","category":"tax","official_url":"https://www.gov.tw/News_Content_2_tax.html","verify_status":"unverified","score":0.88,"match":"partial"}]},
+ "hint":"Open the top hit with `agentbox kb open org:etax`, or read the full record with `agentbox kb get org:etax`. Use only these URLs; do not invent one."}
+```
+
+上面的 `svc:TAX-TEST-1` 是說明用的匯入樣本。正式的 146973 服務代碼與 `頁面連結` 以你匯入的 JSON 為準，不要把範例網址當成標準答案。
+
+模糊命中（「報稅」只有兩個字，走掃描；「身分正」是錯字）：
+
+```json
+{"ok":true,"data":{"query":"報稅","via":"scan","hits":[
+ {"id":"org:etax","kind":"org","name_zh":"財政部稅務入口網","category":"tax","official_url":"https://www.etax.nat.gov.tw/etwmain/","verify_status":"verified","score":1.0,"match":"exact"},
+ {"id":"svc:TAX-TEST-1","kind":"service","name_zh":"綜合所得稅結算申報","category":"tax","official_url":"https://www.gov.tw/News_Content_2_tax.html","verify_status":"unverified","score":0.528,"match":"fuzzy"}]},
+ "hint":"Open the top hit with `agentbox kb open org:etax`, or read the full record with `agentbox kb get org:etax`. Use only these URLs; do not invent one."}
+```
+
+```json
+{"ok":true,"data":{"query":"身分正","via":"scan","hits":[
+ {"id":"svc:HH-TEST-1","kind":"service","name_zh":"國民身分證補發","category":"household","official_url":"https://www.gov.tw/News_Content_2_id.html","verify_status":"unverified","score":0.52,"match":"fuzzy"}]},
+ "hint":"Open the top hit with `agentbox kb open svc:HH-TEST-1`, or read the full record with `agentbox kb get svc:HH-TEST-1`. Use only these URLs; do not invent one."}
+```
+
+找不到：
+
+```json
+{"ok":false,"error":{"code":"not_found","message":"no knowledge-base entry matches zzzzqqqq"},
+ "hint":"No knowledge-base entry matches zzzzqqqq. Try a shorter official name, for example `agentbox kb search 戶政`. Do not invent URLs or steps. Only if the knowledge base still has nothing, use `agentbox search zzzzqqqq --site gov.tw` as a last resort."}
+```
+
+`kb open` 的成功輸出和 `fetch` 一樣（`doc`、`title`、`outline`），30 天內的快照會重用（`from_cache: true`）。官方站被擋住時錯誤碼是 `fetch_blocked`，`error` 裡仍有知識庫裡的 `official_url`，這時可以回報網址，但要說明內文沒抓到。
+
+`verify_status`：`verified` 是標題核對過，`connected` 是 HTTP 200，`blocked` 是網域在但內文沒讀到（例如健保署），`unverified` 是開放資料整批匯入、尚未逐筆重抓。民間網站只存官方 URL，不快取全文。
 
 > ⚠️ **千萬不要把金鑰 commit 進版本庫。** 專案附了 `.env.example` 當範本；如果你用 direnv 或 dotenv 之類的工具，把它複製成 `.env` 再填值，`.env` 已列在 `.gitignore`。agentbox 本身不會讀 `.env`，只看環境變數和狀態目錄的設定檔。`config` 子命令也刻意不放進 `schema`，避免 agent 經手金鑰。
 
@@ -440,9 +511,11 @@ skill 裡的每一行 `agentbox ...` 範例都會在測試中用真正的命令�
 cargo build --release
 ./target/release/agentbox --help
 
-# 完全靜態的執行檔（需要 musl-tools）
+# 完全靜態的執行檔（需要 musl-tools；SQLite 是編進去的 C 程式，要用 musl-gcc）
 rustup target add x86_64-unknown-linux-musl
 sudo apt-get install musl-tools
+CC_x86_64_unknown_linux_musl=musl-gcc \
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc \
 cargo build --release --target x86_64-unknown-linux-musl
 ```
 

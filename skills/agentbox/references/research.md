@@ -2,6 +2,13 @@
 
 Use this when you need better search results, must read long pages, or get weak keyless results.
 
+For a Taiwan government service or daily-life official site, start with the knowledge base (`references/kb.md`). Web search is the last resort.
+
+```bash
+agentbox kb search 報稅 --limit 5
+agentbox kb open org:etax
+```
+
 ## Search
 
 ```bash

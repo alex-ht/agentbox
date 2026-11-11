@@ -264,6 +264,35 @@ pub const SPECS: &[Spec] = &[
         ],
     },
     Spec {
+        name: "kb_search",
+        path: &["kb", "search"],
+        implemented: true,
+        desc: "Search the offline Taiwan knowledge base before any web search. Returns ranked hits (id, name_zh, category, official_url, verify_status, score). Use only URLs from these hits. If nothing matches, follow the hint: rephrase, and only then use web search as a last resort. Never invent a URL.",
+        params: &[
+            pos("query", "Keywords, e.g. 報稅 or 身分證 補發. Chinese partial words work"),
+            opt("category", Kind::Str, "Only this category slug: portal, household, nhi, tax, motor, labor, welfare, transport, medical, utilities, post, weather, consumer, finance"),
+            choice("kind", "all", &["org", "service", "all"], "org, service, or all"),
+            dflt("limit", Kind::Int, "8", "Maximum hits (1-50)"),
+        ],
+    },
+    Spec {
+        name: "kb_get",
+        path: &["kb", "get"],
+        implemented: true,
+        desc: "Get one knowledge-base record by id: names, aliases, category, official_url, service deep links, source, license, verify_status and last_verified. Does not include page text; open it with kb_open, then read.",
+        params: &[pos("id", "Record id from kb_search, e.g. org:ris or svc:CODE")],
+    },
+    Spec {
+        name: "kb_open",
+        path: &["kb", "open"],
+        implemented: true,
+        desc: "Open a URL that is already stored on a knowledge-base record. Returns a doc handle, title and outline like fetch (reuse with read). Uses a cached snapshot when it is under 30 days old; otherwise fetches that exact URL. Never pass or invent a URL.",
+        params: &[
+            pos("id", "Record id from kb_search"),
+            dflt("which", Kind::Str, "official", "official, or a service_urls rel such as apply, form, page or email"),
+        ],
+    },
+    Spec {
         name: "extract",
         path: &["extract"],
         implemented: true,
@@ -692,6 +721,9 @@ mod tests {
             }
             collect_leaves(&name, sc, &mut leaves);
         }
+        // `kb import` rebuilds the database. Like config, it is a human
+        // command and is intentionally absent from the tool schema.
+        leaves.retain(|(name, _)| name != "kb_import");
         assert_eq!(
             leaves.len(),
             SPECS.len(),

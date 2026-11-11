@@ -13,6 +13,10 @@ pub const NAME: &str = "agentbox";
 pub const FILES: &[(&str, &str)] = &[
     ("SKILL.md", include_str!("../skills/agentbox/SKILL.md")),
     (
+        "references/kb.md",
+        include_str!("../skills/agentbox/references/kb.md"),
+    ),
+    (
         "references/research.md",
         include_str!("../skills/agentbox/references/research.md"),
     ),

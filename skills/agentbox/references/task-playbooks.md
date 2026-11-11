@@ -3,6 +3,18 @@
 Short recipes. Adapt names and numbers to the task. Every recipe ends with the Done criteria in SKILL.md.
 Start every new task with `agentbox now`, and `agentbox note clear --apply` if `agentbox note list` shows notes from an older task.
 
+## Taiwan official site or service
+
+```bash
+agentbox kb search "身分證 補發" --kind service
+agentbox kb get org:ris
+agentbox kb open org:ris
+agentbox read doc:1 --grep 補發
+agentbox note add 'Use the household registration site for ID replacement' --source https://www.ris.gov.tw --tag findings
+```
+
+Do not invent the URL or the steps. If `kb search` is `not_found`, rephrase once, then as a last resort `agentbox search "身分證 補發" --site gov.tw`. If `verify_status` is `blocked`, report the official URL and say the page text was not fetched.
+
 ## Stock briefing (price, move, context)
 
 ```bash
