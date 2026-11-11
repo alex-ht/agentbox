@@ -201,7 +201,7 @@ CREATE VIRTUAL TABLE kb_fts USING fts5(
 
 ### 種子
 
-- 精選表在 `src/kb/curated.toml`，`kb import --curated` 載入（或 `--curated-file` 用同一格式的外部檔）。來源 `curated:kb-v1`，授權標示 `official-url-only`，`last_verified` 為 2026-11-11。只接受 `verified`／`connected`／`blocked` 與 `https`。未連上的網址不收。
-- `kb import --services FILE` 讀 146973 的 JSON 陣列（線上／臨櫃／電郵傳真三份欄位都認）。`official_url` 優先用 `頁面連結`，否則用申辦、表單或電郵連結；都沒有 http(s) 網址的列略過。來源 `data.gov.tw:146973`，授權 `OGDL-1.0`，`verify_status` 為 `unverified`（整批匯入，沒有逐筆 curl）。說明取服務內容，截到 400 字。分類用標題與說明裡的關鍵字對到 14 個生活分類，對不到就用檔名推得的 `online`／`counter`／`other`。
+- 精選表在 `src/kb/curated.toml`，`kb import --curated` 載入（或 `--curated-file` 用同一格式的外部檔）。來源 `curated:kb-v1`，授權標示 `official-url-only`，`last_verified` 為 2026-11-11。狀態接受 `verified`／`connected`／`blocked`／`unverified`，網址必須是 `https`。`unverified` 表示這次有對該官方網址發請求，但沒讀到可核對的內文（逾時、403、挑戰頁）；網址仍只寫查過的那一個，不另編路徑。分類除了原來的 14 個，還有 `food`、`shopping`、`housing`、`education`、`entertainment`、`payment`。
+- `kb import --services FILE` 讀 146973 的 JSON 陣列（線上／臨櫃／電郵傳真三份欄位都認）。`official_url` 優先用 `頁面連結`，否則用申辦、表單或電郵連結；都沒有 http(s) 網址的列略過。來源 `data.gov.tw:146973`，授權 `OGDL-1.0`，`verify_status` 為 `unverified`（整批匯入，沒有逐筆 curl）。說明取服務內容，截到 400 字。分類用標題與說明裡的關鍵字對到生活分類，對不到就用檔名推得的 `online`／`counter`／`other`。
 - 每次匯入覆寫 `ATTRIBUTION.txt`：精選入口的界線，以及資料集 146973 的顯名（數位發展部、資料集名稱、OGDL-1.0、https://data.gov.tw/license/、三個 JSON 網址）。`--replace` 會先刪掉同一 `source` 的舊列。
 - 測試只用內建 TOML、小型 fixture 與 `testutil::serve`，不連外網。

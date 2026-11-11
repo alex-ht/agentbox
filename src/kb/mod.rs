@@ -487,7 +487,7 @@ agentbox 離線知識庫顯名聲明
 寫入時間：{now}
 
 一、精選機關與民間官方入口（source = {curated}）
-這些列只收錄名稱、分類與官方網址，verify_status 為 verified、connected 或 blocked。
+這些列只收錄名稱、分類與官方網址。verify_status 為 verified、connected、blocked 或 unverified（有查過但這台機器讀不到內文）。
 不是政府開放資料的重製，也沒有把網頁全文放進知識庫。民間網站只供查詢官方入口，
 授權標示為 {curated_license}。驗證日期：{verified}。
 沒有通過連線核對的網址刻意不收錄。

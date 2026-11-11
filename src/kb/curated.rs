@@ -1,7 +1,7 @@
 //! Built-in curated org list (`curated.toml`), verified 2026-11-11.
 //!
-//! Only URLs that were checked are loaded. `unverified` is rejected here so a
-//! bad edit cannot ship an unconfirmed official site.
+//! Every URL was requested with curl. `unverified` means the check did not
+//! return a readable page; the URL is still the official one we tried.
 
 use super::db::Record;
 use crate::cmd::fetch::normalize_url;
@@ -28,9 +28,15 @@ pub const LIFE_CATEGORIES: &[&str] = &[
     "weather",
     "consumer",
     "finance",
+    "food",
+    "shopping",
+    "housing",
+    "education",
+    "entertainment",
+    "payment",
 ];
 
-const ALLOWED_STATUS: &[&str] = &["verified", "connected", "blocked"];
+const ALLOWED_STATUS: &[&str] = &["verified", "connected", "blocked", "unverified"];
 
 pub fn load_embedded() -> Result<Vec<Record>, AppError> {
     parse(include_str!("curated.toml"))
@@ -83,7 +89,7 @@ fn to_record(org: CuratedOrg, seen: &mut HashSet<String>) -> Result<Record, AppE
     if !ALLOWED_STATUS.contains(&org.verify_status.as_str()) {
         return Err(bad(
             &org.id,
-            "verify_status must be verified, connected or blocked",
+            "verify_status must be verified, connected, blocked or unverified",
         ));
     }
     let official_url = normalize_url(org.official_url.trim())

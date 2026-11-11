@@ -55,7 +55,6 @@ const FORBIDDEN_HOSTS: &[&str] = &[
     "eoc.nfa.gov.tw",
     "www.cdprc.ey.gov.tw",
     "www.emic.gov.tw",
-    "www.cwa.gov.tw",
 ];
 
 fn host_of(url: &str) -> String {
@@ -83,7 +82,7 @@ fn curated_urls_are_checked_and_forbidden_hosts_are_absent() {
         );
         assert!(matches!(
             rec.verify_status.as_str(),
-            "verified" | "connected" | "blocked"
+            "verified" | "connected" | "blocked" | "unverified"
         ));
         assert_eq!(rec.source, "curated:kb-v1");
         assert_eq!(rec.source_license, "official-url-only");
@@ -114,6 +113,82 @@ fn curated_urls_are_checked_and_forbidden_hosts_are_absent() {
         by_id("org:cwa-opendata").official_url,
         "https://opendata.cwa.gov.tw"
     );
+    assert_eq!(by_id("org:cwa").official_url, "https://www.cwa.gov.tw");
+    assert_eq!(by_id("org:cwa").verify_status, "verified");
+    assert_eq!(by_id("org:vscinemas").verify_status, "unverified");
+    assert!(records.len() >= 140, "curated count {}", records.len());
+}
+
+#[test]
+fn everyday_queries_return_relevant_hits() {
+    let (_tmp, store) = store_dir();
+    import_curated(&store);
+    let expect = [
+        (
+            "電影",
+            &[
+                "org:vscinemas",
+                "org:ambassador",
+                "org:showtimes",
+                "org:miramar",
+            ][..],
+        ),
+        (
+            "公車",
+            &[
+                "org:bus-taipei",
+                "org:bus-newtaipei",
+                "org:bus-taoyuan",
+                "org:bus-taichung",
+                "org:bus-tainan",
+                "org:bus-kaohsiung",
+                "org:bus-keelung",
+                "org:bus-hsinchu",
+                "org:bus-hsinchu-county",
+                "org:bus-changhua",
+                "org:bus-pingtung",
+            ][..],
+        ),
+        ("天氣", &["org:cwa", "org:cwa-opendata"][..]),
+        ("臺鐵", &["org:railway", "org:tra-book", "org:tra-time"][..]),
+        ("台鐵", &["org:railway", "org:tra-book", "org:tra-time"][..]),
+        (
+            "高鐵",
+            &["org:thsrc", "org:thsrc-time", "org:thsrc-book"][..],
+        ),
+        ("租屋", &["org:rent591"][..]),
+        ("外送", &["org:ubereats", "org:foodpanda"][..]),
+    ];
+    for (query, allowed) in expect {
+        let out = run_search(
+            &store,
+            &SearchArgs {
+                query: query.into(),
+                category: None,
+                kind: "org".into(),
+                limit: 3,
+            },
+        )
+        .unwrap_or_else(|e| panic!("{query}: {} {}", e.message, e.hint));
+        let ids: Vec<&str> = out.data["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| h["id"].as_str().unwrap())
+            .collect();
+        assert!(!ids.is_empty(), "{query} returned no hits");
+        assert!(
+            allowed.contains(&ids[0]),
+            "{query} top hit {} not in {allowed:?}",
+            ids[0]
+        );
+        for id in &ids {
+            assert!(
+                allowed.contains(id),
+                "{query} hit {id} is outside {allowed:?}; hits {ids:?}"
+            );
+        }
+    }
 }
 
 #[test]
