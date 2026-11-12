@@ -187,6 +187,10 @@ pub enum Cmd {
     #[command(subcommand)]
     Kb(KbCmd),
 
+    /// Search and open Wikipedia articles (after kb, before web search)
+    #[command(subcommand)]
+    Wiki(WikiCmd),
+
     /// Settings such as the Tavily and Stooq API keys (stored in the state dir)
     #[command(subcommand)]
     Config(ConfigCmd),
@@ -416,10 +420,41 @@ pub enum KbCmd {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum WikiCmd {
+    /// Full-text Wikipedia search; titles, snippets and canonical URLs
+    #[command(
+        after_help = "Default language is zh (Traditional Chinese, Taiwan variant). Use --lang en for English.\nSearch kb first for a Taiwan official site. Web search is the last resort.\n\nExamples:\n  agentbox wiki search 台北101\n  agentbox wiki search \"Albert Einstein\" --lang en --limit 3"
+    )]
+    Search {
+        /// Words to search for
+        #[arg(allow_hyphen_values = true)]
+        query: String,
+        /// Wikipedia language. zh requests the Taiwan variant (zh-tw)
+        #[arg(long, default_value = "zh")]
+        lang: String,
+        /// Maximum hits (1-20)
+        #[arg(long, default_value_t = 5)]
+        limit: usize,
+    },
+    /// Fetch one article's plain text and store it as a doc handle
+    #[command(
+        after_help = "Accepts a title or a wikipedia.org article URL. Redirects are followed.\nA disambiguation or missing page returns an error instead of a doc.\nzh uses variant zh-tw (Traditional Chinese, Taiwan). Read the doc in pieces.\n\nExamples:\n  agentbox wiki open 全民健康保險\n  agentbox wiki open https://en.wikipedia.org/wiki/Albert_Einstein"
+    )]
+    Open {
+        /// Article title, or a https://<lang>.wikipedia.org/wiki/… URL
+        #[arg(allow_hyphen_values = true)]
+        title: String,
+        /// Language when the title is not a URL. A Wikipedia URL uses its host
+        #[arg(long, default_value = "zh")]
+        lang: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 pub enum ConfigCmd {
     /// Store a setting; use `-` (or omit the value) to read it from stdin
     #[command(
-        after_help = "Examples:\n  agentbox config set tavily.api_key -      (then paste the key, press Enter)\n  agentbox config set search.backend bing\n\nKeys: tavily.api_key, stooq.api_key, search.backend. Env TAVILY_API_KEY / STOOQ_API_KEY override the file."
+        after_help = "Examples:\n  agentbox config set tavily.api_key -      (then paste the key, press Enter)\n  agentbox config set search.backend bing\n  agentbox config set wiki.contact ops@example.com\n\nKeys: tavily.api_key, stooq.api_key, search.backend, wiki.contact.\nEnv TAVILY_API_KEY / STOOQ_API_KEY / AGENTBOX_WIKI_CONTACT override the file."
     )]
     Set {
         /// Setting name, e.g. tavily.api_key

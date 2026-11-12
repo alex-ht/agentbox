@@ -59,12 +59,14 @@ $AGENTBOX_HOME（預設 ~/.agentbox 或 %USERPROFILE%\.agentbox）
 ├── kb/
 │   ├── kb.sqlite        離線知識庫（FTS5 trigram）
 │   └── ATTRIBUTION.txt  OGDL／精選入口的顯名聲明
+├── wiki/
+│   └── cache/           維基 API 回應，檔名是請求網址的 FNV-64
 ├── tables/
 │   └── 1.json    表格：id、title、source、columns、rows（儲存格是 JSON 值）、created
 └── notes.jsonl   筆記，每行一個 JSON：id、text、source、tag、created
 ```
 
-`search --save N` 存下的結果和 `fetch` 一樣是 `doc:N`；來源是 Tavily 全文時，`content_type` 會標成 `text/markdown; source=tavily`。
+`search --save N` 存下的結果和 `fetch` 一樣是 `doc:N`；來源是 Tavily 全文時，`content_type` 會標成 `text/markdown; source=tavily`。`wiki open` 的條目是 `text/markdown; source=wikipedia`，`url` 是維基的正規網址，所以 `sources_from_notes` 認得出來。
 
 ## 4. 有副作用的命令
 
@@ -76,13 +78,14 @@ $AGENTBOX_HOME（預設 ~/.agentbox 或 %USERPROFILE%\.agentbox）
 - 任何輸出（資料、錯誤訊息、hint）都不得包含金鑰。`search` 在回傳前會再把金鑰字串替換成 `[redacted]`，就算上游 API 把金鑰回傳在錯誤訊息裡也一樣；`config get` 只顯示公開前綴（如 `tvly-dev-****`）、長度與 FNV 短指紋。
 - `config` 不放進 `schema`，`call` 也無法呼叫它：設定金鑰是使用者的事，不該經過模型。
 - Stooq 金鑰放在網址參數裡，而 reqwest 的錯誤訊息會帶完整網址，所以 `quote` 的每個錯誤訊息都會先把金鑰換成 `[redacted]`。
-- 測試用的服務位址可用 `AGENTBOX_TAVILY_URL`、`AGENTBOX_DDG_URL`、`AGENTBOX_BING_URL`、`AGENTBOX_YAHOO_URL`、`AGENTBOX_STOOQ_URL`、`AGENTBOX_GAMMA_URL`、`AGENTBOX_CLOB_URL` 覆寫，單元測試用內建的 std `TcpListener` 假伺服器，不需要真的金鑰，也不連外網。
+- 維基的聯絡方式不是金鑰：`AGENTBOX_WIKI_CONTACT` 或 `wiki.contact` 只放進 User-Agent。沒設定時不寫個人信箱。
+- 測試用的服務位址可用 `AGENTBOX_TAVILY_URL`、`AGENTBOX_DDG_URL`、`AGENTBOX_BING_URL`、`AGENTBOX_YAHOO_URL`、`AGENTBOX_STOOQ_URL`、`AGENTBOX_GAMMA_URL`、`AGENTBOX_CLOB_URL`、`AGENTBOX_WIKI_API` 覆寫，單元測試用內建的 std `TcpListener` 假伺服器，不需要真的金鑰，也不連外網。
 
 ## 6. 工具 schema
 
 `src/schema.rs` 有一張手寫的規格表，`agentbox schema` 由它產生 OpenAI function tool 格式；`agentbox call` 也用同一張表把 JSON 參數轉回命令列。單元測試會逐一比對規格表與 clap 定義（參數名稱、是否必填、預設值、可選值），兩邊不一致就會失敗，避免 schema 與實際行為脫節。巢狀子命令的工具名稱用底線連接，例如 `file_replace`、`note_add`。可重複的旗標（如 `search --site`）在 schema 裡是字串陣列，`call` 會展開成多個 `--site=...`。
 
-`kb` 同樣拆成 `kb_search`、`kb_get`、`kb_open` 三個工具。`kb import` 會重建資料庫，和 `config` 一樣不進 schema，`call` 也不能執行它。
+`kb` 同樣拆成 `kb_search`、`kb_get`、`kb_open` 三個工具。`kb import` 會重建資料庫，和 `config` 一樣不進 schema，`call` 也不能執行它。`wiki` 拆成 `wiki_search`、`wiki_open`。描述裡的順序是先 `kb_search`、再 `wiki_search`、最後才是網頁 `search`（免金鑰時為 DuckDuckGo）。
 
 報告工具拆成 `report_build`、`report_check`、`report_templates`、`report_template_show` 四個獨立的 function tool，而不是一個 `report` 工具加 `action` 參數。理由是小模型最容易犯的錯是參數搭配錯誤（例如對 `check` 傳了 `title`、對 `build` 傳了 `file`）；拆開後每個工具的 schema 只列自己用得到的參數，必填欄位也很明確，描述可以直接寫「下一步做什麼」。代價只是工具清單多三個項目。`table_*`（4 個）、`quote_*`（3 個）、`market_*`（4 個）沿用同樣的拆法；`extract` 例外，所有 kind 共用同一組參數，所以是一個工具加 `kind` 列舉。schema 測試會遞迴走訪任意深度的巢狀子命令（`report template show` → `report_template_show`），確保規格表與 clap 定義同步。
 
@@ -208,3 +211,15 @@ CREATE VIRTUAL TABLE kb_fts USING fts5(
 - 每次匯入覆寫 `ATTRIBUTION.txt`：精選入口的界線，資料集 146973 的顯名（數位發展部、資料集名稱、OGDL-1.0、https://data.gov.tw/license/、三個 JSON 網址），以及 CrUX／Wikidata 的授權。`--replace` 會先刪掉同一 `source` 的舊列。
 - 常用網站：`kb import --crux FILE --scope tw|global --max-rank N` 讀 zakird/crux-top-lists 的 `origin,rank` CSV（可 gzip）。`rank` 是量級桶，只保留 `rank <= N`。用內嵌的 Public Suffix List 折成 eTLD+1；首頁優先清單裡出現過的 `www` 或 apex（https 優先），其餘有用的子網域放進 `alt_urls`（例如 `irs.thsrc.com.tw`）。登入、SSO、admin、API、購物車、結帳、LMS、CDN 這類子網域不當首頁，也不進 `alt_urls`。整個網域若是成人關鍵字（含 `av` 接數字、`jav`、`porn`、`hentai`、`18+`、成人 TLD）、IP、或 `popular_denylist.txt` 裡的基礎設施／廣告網域就丟掉。名稱會先解 HTML entity，簡體轉繁體（OpenCC 字元表，不改寫專名詞組），只有假名或空的名稱改用網域品牌。匯入時會再清一次，所以已提交的種子也會在載入時過濾。`github.io`、`blogspot.com`、`wordpress.com` 這類共用後綴整筆略過。`--verify` 才抓首頁，`--enrich` 才查 Wikidata P856（CC0）。產物提交在 `src/kb/popular_tw.json.gz` 與 `popular_global.json.gz`，`kb import --popular` 離線載入。跟精選表同一註冊網域時精選列勝出，只把別名與桶併進去。搜尋先比文字分數，桶（1000 優於 5000）只當同分時的次序，不會把沒過門檻的列變成命中。重現步驟見 `scripts/build_popular_seed.sh`。
 - 測試只用內建 TOML、小型 fixture 與 `testutil::serve`，不連外網。
+
+## 14. 維基百科（wiki）
+
+給小模型查百科，不把整篇條目灌進上下文。順序是 `kb search`（台灣官網與申辦）→ `wiki search`／`wiki open` → `read` → `note add`。網頁 `search`（DuckDuckGo）是最後手段。
+
+- **搜尋**：`action=query&list=search&srnamespace=0&srprop=snippet`。`hits` 只有 `title`、去掉 HTML 與實體的短 `snippet`、`https://<lang>.wikipedia.org/wiki/<title>`。預設 `--lang zh`，網站是 `zh.wikipedia.org`，並加 `variant=zh-tw`、`converttitles=1`、`Accept-Language: zh-TW`。`--lang en` 不帶 variant。`--limit` 1–20，預設 5。
+- **開啟**：`prop=extracts|pageprops|info`、`explaintext=1`、`exsectionformat=wiki`、`redirects=1`、`inprop=url`。正文把 `== 標題 ==` 轉成 Markdown 標題，前面加上條目名稱當一級標題，存成 `doc:N`，`content_type` 是 `text/markdown; source=wikipedia`，`url` 用 API 的 `canonicalurl`（沒有才用 `fullurl`）。輸出形狀與 `fetch` 相同，另加 `lang`、`variant`、`from_cache`，有重新導向時加 `redirected_from`。
+- **網址**：`wiki open` 接受標題，或 `https://<lang>.wikipedia.org/wiki/…`、手機版 `<lang>.m.wikipedia.org`、`/w/index.php?title=`、`/zh-tw/標題`。網址裡的語言蓋過 `--lang`。百分號路徑會先解碼再送給 API，避免雙重編碼。
+- **缺頁與消歧義**：`missing` 是 `not_found`。`pageprops.disambiguation` 是 `disambiguation`，從純文字抽出最多 8 個 `Title, 說明` 放進 `error.candidates`，不存文件、不當掉。
+- **公民禮貌**：User-Agent 是 `agentbox/<version> (https://github.com/alex-ht/agentbox[; contact]) reqwest/<version>`。contact 只來自 `AGENTBOX_WIKI_CONTACT` 或 `wiki.contact`，預設省略。每次命令一個阻塞客戶端，不平行請求。每個 Action API 網址都有 `maxlag=5`。HTTP 429／503，以及 JSON 錯誤碼 `maxlag`／`ratelimited`，讀 `Retry-After` 的秒數（沒有就 1、2、4 秒），單次最多等 10 秒，最多 3 次，用盡回 `rate_limited`。
+- **快取**：成功的 JSON 放在 `$AGENTBOX_HOME/wiki/cache/<fnv64>.json`，並核對裡面的網址。搜尋 24 小時，條目 7 天。條目另外比對既有 `source=wikipedia` 文件，網址相同且未過期就重用同一個 `doc:N`。
+- **測試**：`testutil::serve` 假 HTTP，覆蓋搜尋、開啟、重新導向、缺頁、消歧義、429、maxlag、`zh-tw` 參數與快取。不在單元測試裡連維基。

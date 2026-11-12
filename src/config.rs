@@ -16,6 +16,7 @@ pub const KEYS: &[(&str, bool, Option<&str>)] = &[
     ("tavily.api_key", true, Some("TAVILY_API_KEY")),
     ("stooq.api_key", true, Some("STOOQ_API_KEY")),
     ("search.backend", false, None),
+    ("wiki.contact", false, Some("AGENTBOX_WIKI_CONTACT")),
 ];
 
 pub fn path(store: &Store) -> PathBuf {

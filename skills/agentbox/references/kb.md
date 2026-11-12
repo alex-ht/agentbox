@@ -9,7 +9,8 @@ Do not answer those from memory. Do not invent a URL, a fee, or a step.
 1. `kb search`, then `kb get` if you need aliases, service links, `verify_status`, or the source.
 2. `kb open` (or `fetch` of a URL that just appeared in kb output), then `read`.
 3. `note add` with that URL or `doc:N`.
-4. `search` only if the knowledge base has no entry, the official page is blocked and you still need the text, or the question is outside Taiwan daily life. Add `--site gov.tw` when you can.
+4. Encyclopedic facts (a person, place, or concept): `wiki search`, then `wiki open`, then `read`.
+5. `search` (DuckDuckGo) only if the knowledge base and Wikipedia have nothing, the official page is blocked and you still need the text, or you need a page neither source has. Add `--site gov.tw` for a Taiwan government page.
 
 ```bash
 agentbox kb search "身分證 補發" --kind service --limit 5

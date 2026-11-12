@@ -2,12 +2,32 @@
 
 Use this when you need better search results, must read long pages, or get weak keyless results.
 
-For a Taiwan government service or daily-life official site, start with the knowledge base (`references/kb.md`). Web search is the last resort.
+For a Taiwan government service or daily-life official site, start with the knowledge base (`references/kb.md`). For encyclopedic facts, use Wikipedia next. DuckDuckGo web search is the last resort.
 
 ```bash
 agentbox kb search 報稅 --limit 5
 agentbox kb open org:etax
 ```
+
+## Wikipedia
+
+People, places, history, and concepts. Search `kb` first when it might be a Taiwan official topic, then Wikipedia, then DuckDuckGo.
+
+```bash
+agentbox wiki search 台北101 --limit 3
+agentbox wiki open 台北101
+agentbox read doc:1 --grep 高度
+agentbox wiki search "Albert Einstein" --lang en --limit 3
+agentbox wiki open "Albert Einstein" --lang en
+agentbox note add 'Taipei 101 is a skyscraper in Xinyi, Taipei' --source https://zh.wikipedia.org/wiki/%E5%8F%B0%E5%8C%97101 --tag findings
+```
+
+- Default `--lang` is `zh` (Traditional Chinese, Taiwan variant `zh-tw`). English is `--lang en`.
+- `wiki search` returns `data.hits[]` with `title`, `snippet`, and `url`. A snippet is a lead, not a source. Open the title.
+- `wiki open` returns `data.doc` and `data.outline` like `fetch`. `data.url` is the canonical article URL. Cite that URL. Read with `--grep` or `--section`.
+- `error.code` `disambiguation`: open one `error.candidates[].title`. Do not guess. `not_found`: try the other language, then `search`.
+- A Wikipedia URL sets the language from its host. `en.wikipedia.org` stays English.
+- Repeated queries reuse a local cache. Do not paste the article into the answer.
 
 ## Search
 
