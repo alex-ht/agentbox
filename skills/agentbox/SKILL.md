@@ -2,7 +2,7 @@
 name: agentbox
 description: >
   Do research and data work with the `agentbox` CLI: offline Taiwan knowledge
-  base, web search, fetch and read pages, look up facts with source URLs,
+  base, Wikipedia, web search, fetch and read pages, look up facts with sources,
   compare prices and products, extract prices/tables/dates/people, get stock,
   index, FX and crypto quotes (incl. Taiwan .TW), check Polymarket odds, do
   arithmetic, get today's date, keep notes with sources, write a sourced
@@ -10,7 +10,7 @@ description: >
   Use when a task needs official sites, facts, current numbers, citations, a
   report file, or a file edit. Do not use for small talk, opinions, or answers
   that need no source, and not for trivial math that does not go into an answer.
-compatibility: Requires the `agentbox` binary (v0.2.0+) on PATH. Prebuilt for Linux and Windows x86_64; build from source on macOS. Needs network access for search, fetch, quote and market. The knowledge base works offline after import. Optional TAVILY_API_KEY gives better search; without it agentbox uses keyless DuckDuckGo/Bing.
+compatibility: Requires the `agentbox` binary (v0.2.0+) on PATH. Prebuilt for Linux and Windows x86_64; build from source on macOS. Needs network access for wiki, search, fetch, quote and market. The knowledge base works offline after import. Optional TAVILY_API_KEY gives better search; without it agentbox uses keyless DuckDuckGo/Bing.
 metadata:
   author: alex-ht
   version: "0.2.0"
@@ -92,7 +92,7 @@ Failure: `{"ok":false,"error":{"code":"...","message":"..."},"hint":"..."}`
 
 ## Golden research workflow
 
-Taiwan government or daily life (which official site, how to apply): `kb search`, then `kb open` or `fetch` of a URL the KB returned, then `read`, then `note add`. Do not answer those from memory. `search` is the last resort.
+Taiwan government or daily life (which official site, how to apply): `kb search`, then `kb open` or `fetch` of a URL the KB returned, then `read`, then `note add`. Do not answer those from memory. General knowledge: `wiki search`, then `wiki open`, then `read`. `search` (DuckDuckGo) is the last resort.
 
 ```bash
 agentbox kb search 報稅
@@ -118,7 +118,7 @@ agentbox report check report.md --template brief
 
 1. `now`: get today's date. Use it for "latest", "this week", and in the report.
    At the start of a new task, `note list`; if it shows notes from an older task, `note clear --apply`. Never clear notes in the middle of a task.
-2. Taiwan official facts: `kb search`, then `kb get` or `kb open`. Elsewhere: `search --save N` stores the top N as `doc:1`, `doc:2`, ... `search` only after the knowledge base misses, the official page is blocked, or the question is outside this KB.
+2. Order: `kb search` first (Taiwan official sites), then `wiki search` / `wiki open` for encyclopedic facts. `search` (DuckDuckGo) is last, after both miss or you need a page they do not have. `search --save N` stores the top N as docs.
 3. `read doc:N --grep WORD` or `--section N`: read only the part you need. Never dump a whole doc.
 4. `note add`: save each fact with its `--source` URL. Tag notes with a section word (`summary`, `findings`) or `item1`, `item2`, ... for numbered reports (top-n, market-brief).
 5. `extract` / `table`: pull prices, dates, tables or people from docs, then sort or filter them.
@@ -133,6 +133,8 @@ agentbox report check report.md --template brief
 agentbox kb search 報稅 --limit 5                      # offline Taiwan official sites first
 agentbox kb get org:etax                               # full record, aliases, service links
 agentbox kb open org:etax                              # doc handle from the stored URL
+agentbox wiki search 台北101 --limit 3                 # Wikipedia after kb, before web search
+agentbox wiki open 台北101                            # article plain text as doc:N; then read
 agentbox kb import --curated                           # human setup; do not run this yourself
 agentbox now --tz Asia/Taipei                         # date, time, weekday
 agentbox calc "round(1299 * 0.85, 2)"                 # all arithmetic
@@ -171,7 +173,8 @@ agentbox config get                                   # which search backend/key
 ## What to take from the output
 
 - `kb search`: `data.via` (`trigram` or `scan`) and `data.hits[]` (`id`, `name_zh`, `category`, `official_url`, `verify_status`, `score`, `match`, `matched_terms`, `which`). Extra words can miss; `matched_terms` lists the words that hit. `which` lists `kb open --which` values. Then `kb get` or `kb open`.
-- `search`: `data.results[]` with `title`, `url`, `snippet`, and `doc` when saved. `data.backend` tells you the engine.
+- `wiki search`: `data.hits[]` (`title`, `snippet`, `url`). Then `wiki open`. `wiki open` returns `data.doc`, `data.url` and `data.outline` like `fetch`. On `disambiguation`, open one `error.candidates[].title`.
+- `search`: `data.results[]` with `title`, `url`, `snippet`, and `doc` when saved. `data.backend` tells you the engine. DuckDuckGo is the keyless default and the last resort.
 - `fetch`: `data.doc` and `data.outline[]` (`section`, `heading`). Then use `read`.
 - `read`: `data.content`. If `data.truncated` is true, continue with `--offset` set to `data.next_offset`. With `--grep`: `data.snippets[]` (`section`, `text`). On `no_match`, the hint lists nearby headings and a shorter term.
 - `note list`: `data.notes[]` (`text`, `source`, `tag`) and `data.sources[]`.
@@ -189,7 +192,7 @@ Open a reference file (relative to this skill folder) only when you need it:
 | You need to... | Open |
 |---|---|
 | look up a Taiwan official site or government service | `references/kb.md` |
-| search better, read long pages, handle weak keyless results | `references/research.md` |
+| search Wikipedia or the web, read long pages, handle weak keyless results | `references/research.md` |
 | get prices, tables, dates or people out of pages; filter or sort | `references/data.md` |
 | write a report file, pick a template, fix `report check` issues | `references/reports.md` |
 | get stock/FX/crypto quotes or Polymarket odds | `references/finance-markets.md` |
@@ -203,7 +206,7 @@ Open a reference file (relative to this skill folder) only when you need it:
 3. Do not reimplement agentbox features in Python or shell scripts.
 4. Use `agentbox calc` for every number you compute (sums, percentages, averages, conversions).
 5. Use `agentbox now` for today's date. Never guess the date or year.
-6. Cite only URLs that appeared in agentbox output in this task (kb, search, fetch, notes, quote, market). Never invent a URL. For Taiwan official sites, start with `kb search`; do not answer from memory.
+6. Cite only URLs that appeared in agentbox output in this task (kb, wiki, search, fetch, notes, quote, market). Never invent a URL. Order is `kb search`, then `wiki search`, then DuckDuckGo `search`.
 7. Do not paste raw page content into your answer. Summarize in your own words; quote at most one short sentence.
 8. Read with `--grep` or `--section`. Do not read a whole doc page by page unless you must.
 9. Writes need `--apply`. Without it nothing is written; you only get a diff preview. Preview first when you change a file you did not create.
@@ -235,7 +238,7 @@ Open a reference file (relative to this skill folder) only when you need it:
   Windows: add `%USERPROFILE%\.openclaw\tools\agentbox\bin` to the user Path), then start a new session.
 - macOS has no prebuilt binary. Build from source (Rust 1.85+):
   `cargo install --git https://github.com/alex-ht/agentbox --tag v0.2.0 --locked`.
-- Network: `search` calls api.tavily.com (only with a key), html.duckduckgo.com or bing.com;
+- Network: `wiki` calls `<lang>.wikipedia.org`; `search` calls api.tavily.com (only with a key), html.duckduckgo.com or bing.com;
   `quote` calls finance.yahoo.com or stooq.com; `market` calls polymarket.com;
   `fetch`/`extract` read only the URLs the agent passes.
 - Keys are optional and set by the human (env `TAVILY_API_KEY`, or `agentbox config set` run by the human).

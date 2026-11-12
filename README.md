@@ -69,10 +69,11 @@ Move-Item -Force "agentbox-$v-x86_64-pc-windows-msvc\agentbox.exe" $dir
 | `table show\|query\|import\|export` | `tbl:N` 或 CSV／TSV／JSON／Markdown 表格的檢視、過濾、排序、分組加總與匯出，不用寫程式 | ✅ 可用 |
 | `quote get\|history\|search` | 股票、指數、匯率、加密貨幣的即時報價、歷史價格與代號查詢（Yahoo，免金鑰；Stooq 備援） | ✅ 可用 |
 | `market search\|get\|trending\|history` | Polymarket 預測市場：關鍵字搜尋、熱門、單一活動細節與機率走勢（唯讀，免金鑰） | ✅ 可用 |
-| `kb search\|get\|open` | 台灣日常生活離線知識庫：機關與申辦服務的官方網址。先查這裡，再 `fetch`／`read`，`search` 是最後手段 | ✅ 可用 |
+| `kb search\|get\|open` | 台灣日常生活離線知識庫：機關與申辦服務的官方網址。先查這裡，再 `wiki`，`search` 是最後手段 | ✅ 可用 |
 | `kb import` | 把精選官網與 data.gov.tw 146973 的 JSON 寫進本機資料庫（給人用，不進 schema） | ✅ 可用 |
+| `wiki search\|open` | 線上維基百科全文檢索與條目開啟。繁體臺灣變體。存成 doc handle，不把全文灌進上下文 | ✅ 可用 |
 
-所有給 agent 的子命令都已實作，`agentbox schema --implemented-only` 會列出全部 30 個工具（`config`、`skill`、`schema`、`call`、`kb import` 是給人用的，不算在內）。
+所有給 agent 的子命令都已實作，`agentbox schema --implemented-only` 會列出全部 32 個工具（`config`、`skill`、`schema`、`call`、`kb import` 是給人用的，不算在內）。
 
 ## 搜尋與 Tavily 金鑰
 
@@ -136,7 +137,8 @@ agentbox config unset tavily.api_key
 1. `kb search`／`kb get`
 2. `kb open` 或 `fetch`（網址必須來自知識庫輸出），再 `read`
 3. `note add`，`source` 填那個網址或 `doc:N`
-4. `search`（DuckDuckGo）只在知識庫沒有、官方頁抓不到內文、或題目明顯超出台灣日常生活時才用，能加 `--site gov.tw` 就加
+4. 百科類題目接著 `wiki search`／`wiki open`
+5. `search`（DuckDuckGo）是最後手段：知識庫和維基都沒有、官方頁抓不到內文、或需要它們沒有的頁面時才用，台灣政府頁能加 `--site gov.tw` 就加
 
 知識庫不會編造網址。沒核對過的網域（例如 my.gov.tw、medcloud.nhi.gov.tw、www.cwa.gov.tw 首頁）故意不收。
 
@@ -191,12 +193,35 @@ agentbox --format md kb search 勞保局 --limit 1
 
 ```json
 {"ok":false,"error":{"code":"not_found","message":"no knowledge-base entry matches zzzzqqqq"},
- "hint":"No knowledge-base entry matches zzzzqqqq. Split the query into shorter terms, or search the formal official name with `agentbox kb search`. Do not invent URLs or steps. Only if the knowledge base still has nothing, use `agentbox search zzzzqqqq --site gov.tw` as a last resort."}
+ "hint":"No knowledge-base entry matches zzzzqqqq. Split the query into shorter terms, or search the formal official name with `agentbox kb search`. Do not invent URLs or steps. If this is general knowledge rather than a Taiwan official site, try `agentbox wiki search` next. Only if that still has nothing, use `agentbox search zzzzqqqq --site gov.tw` as a last resort."}
 ```
 
 `kb open` 的成功輸出和 `fetch` 一樣（`doc`、`title`、`outline`），30 天內的快照會重用（`from_cache: true`）。官方站被擋住時錯誤碼是 `fetch_blocked`，`error` 裡仍有知識庫裡的 `official_url`，這時可以回報網址，但要說明內文沒抓到。
 
 `verify_status`：`verified` 是標題核對過，`connected` 是 HTTP 200，`blocked` 是網域在但內文沒讀到（例如健保署），`unverified` 是開放資料整批匯入、尚未逐筆重抓。民間網站只存官方 URL，不快取全文。
+
+## 維基百科：`wiki`
+
+百科知識（人物、地名、概念、歷史）在離線知識庫之後、網頁搜尋之前查維基百科。小模型不該靠記憶回答，也不該把整篇條目灌進上下文。
+
+```bash
+agentbox wiki search 台北101 --limit 3
+agentbox wiki search "全民健康保險" --lang zh
+agentbox wiki search "Albert Einstein" --lang en --limit 3
+agentbox wiki open 台北101
+agentbox wiki open https://en.wikipedia.org/wiki/Albert_Einstein
+agentbox read doc:1 --grep 高度
+```
+
+`wiki search` 呼叫 MediaWiki Action API（`https://<lang>.wikipedia.org/w/api.php`，`list=search`）。輸出和 `kb search` 一樣是精簡的 `hits`：`title`、去掉 HTML 的短 `snippet`、正規網址 `url`。預設語言是 `zh`，請求會帶 `variant=zh-tw` 與 `Accept-Language: zh-TW`，條目內文是臺灣用語的繁體中文。英文維基用 `--lang en`。`--limit` 預設 5，範圍 1–20。
+
+`wiki open` 接受條目名稱，或 `https://<lang>.wikipedia.org/wiki/…`（含手機版網址與百分號編碼）。它用 `prop=extracts&explaintext` 取純文字，把維基的 `== 標題 ==` 轉成 Markdown 標題，存成 `doc:N`，回傳形狀與 `fetch` 相同（`doc`、`title`、`url`、`outline`）。正規網址寫進文件中繼資料，報告的來源檢查和 `note --source` 都認得出來。重新導向會跟著走，輸出帶 `redirected_from`。網址裡的語言優先於 `--lang`。
+
+沒有這個頁面是 `not_found`。消歧義頁是 `disambiguation`：`error.candidates` 列出可再開的標題，命令不會當掉，也不會把消歧義頁存成文件。
+
+請求一次只發一個。Action API 都帶 `maxlag=5`。HTTP 429 或回應裡的 `maxlag`／`ratelimited` 會看 `Retry-After` 退避（單次最多等 10 秒，最多 3 次），用盡才回 `rate_limited`。成功的回應寫進 `$AGENTBOX_HOME/wiki/cache`（搜尋 24 小時、條目 7 天）。7 天內相同網址的維基文件會重用，`from_cache` 為 true。
+
+User-Agent 符合維基媒體的政策，形式是 `agentbox/<version> (https://github.com/alex-ht/agentbox; <contact>) reqwest/<version>`。`<contact>` 來自環境變數 `AGENTBOX_WIKI_CONTACT` 或設定檔的 `wiki.contact`（`agentbox config set wiki.contact you@example.com`）。沒設定時括號裡只有專案網址，執行檔不寫死個人信箱。
 
 > ⚠️ **千萬不要把金鑰 commit 進版本庫。** 專案附了 `.env.example` 當範本；如果你用 direnv 或 dotenv 之類的工具，把它複製成 `.env` 再填值，`.env` 已列在 `.gitignore`。agentbox 本身不會讀 `.env`，只看環境變數和狀態目錄的設定檔。`config` 子命令也刻意不放進 `schema`，避免 agent 經手金鑰。
 

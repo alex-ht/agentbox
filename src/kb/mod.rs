@@ -604,8 +604,12 @@ fn not_found(
     }
     parts.push(suggestions.join(" "));
     parts.push("Do not invent URLs or steps.".to_string());
+    parts.push(
+        "If this is general knowledge rather than a Taiwan official site, try `agentbox wiki search` next."
+            .to_string(),
+    );
     parts.push(format!(
-        "Only if the knowledge base still has nothing, use `agentbox search {quoted} --site gov.tw` as a last resort."
+        "Only if that still has nothing, use `agentbox search {quoted} --site gov.tw` as a last resort."
     ));
     let message = if category.is_empty() {
         format!("no knowledge-base entry matches {quoted}")

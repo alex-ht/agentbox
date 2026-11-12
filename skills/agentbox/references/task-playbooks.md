@@ -41,13 +41,16 @@ Confirm the date in two sources if you can. Use `agentbox now` to tell past from
 ## Executive lookup
 
 ```bash
+agentbox wiki search "Jensen Huang" --lang en --limit 3
+agentbox wiki open "Jensen Huang" --lang en
+agentbox read doc:1 --grep Nvidia
 agentbox search "Nvidia CEO" --max-results 5 --save 3
 agentbox extract doc:1 doc:2 doc:3 --kind people --grep CEO
 agentbox search "Jensen Huang biography" --site nvidia.com --save 1
 agentbox report build "Nvidia CEO profile" --template exec-lookup --out exec.md --apply
 ```
 
-Prefer the company's own leadership page and recent press. Give the full name, exact title, since when, and one or two cited facts.
+Wikipedia is the background source. Prefer the company's own leadership page for the current title. Give the full name, exact title, since when, and one or two cited facts.
 
 ## Pricing research / comparison
 
@@ -122,6 +125,7 @@ Check the requirement list (budget, specs, support) and show which option meets 
 ## Deep research (open question, many sources)
 
 ```bash
+agentbox wiki search "small modular reactor" --lang en --limit 3
 agentbox search "small modular reactors cost per MWh 2025" --max-results 8 --save 4
 agentbox search "SMR cost estimate criticism" --max-results 5 --save 2
 agentbox read doc:1 --grep MWh

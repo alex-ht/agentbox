@@ -19,11 +19,12 @@ mod state;
 mod table;
 #[cfg(test)]
 mod testutil;
+mod wiki;
 
 use clap::Parser;
 use cli::{
     Cli, Cmd, ConfigCmd, FileCmd, Format, KbCmd, MarketCmd, NoteCmd, QuoteCmd, ReportCmd, SkillCmd,
-    TableCmd, TemplateCmd,
+    TableCmd, TemplateCmd, WikiCmd,
 };
 use envelope::{envelope, AppError, CmdResult};
 use state::Store;
@@ -191,6 +192,25 @@ fn dispatch(cmd: Cmd, store: &Store) -> CmdResult {
         ),
         Cmd::Kb(KbCmd::Get { id }) => kb::run_get(store, &id),
         Cmd::Kb(KbCmd::Open { id, which }) => kb::run_open(store, &id, &which),
+        Cmd::Wiki(w) => {
+            let contact = config::resolve(store, "wiki.contact", config::env_for("wiki.contact"))
+                .map(|r| r.0);
+            let ep = wiki::Endpoints::from_env();
+            let ctx = wiki::Ctx {
+                store,
+                endpoints: &ep,
+                contact: contact.as_deref(),
+                timeout: 30,
+            };
+            match w {
+                WikiCmd::Search { query, lang, limit } => {
+                    wiki::run_search(&ctx, &wiki::SearchArgs { query, lang, limit })
+                }
+                WikiCmd::Open { title, lang } => {
+                    wiki::run_open(&ctx, &wiki::OpenArgs { title, lang })
+                }
+            }
+        }
         Cmd::Kb(KbCmd::Import {
             curated,
             curated_file,

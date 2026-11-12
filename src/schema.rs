@@ -248,7 +248,7 @@ pub const SPECS: &[Spec] = &[
         name: "search",
         path: &["search"],
         implemented: true,
-        desc: "Search the web. Returns ranked results (title, url, snippet) and which backend was used. Use save to store the top results as doc handles you can `read` directly.",
+        desc: "Search the public web. Last resort after kb_search (Taiwan official sites) and wiki_search (encyclopedic facts). DuckDuckGo is the keyless backend. Returns ranked results (title, url, snippet) and which backend was used. Use save to store the top results as doc handles you can read.",
         params: &[
             pos("query", "Search query"),
             dflt("max_results", Kind::Int, "5", "Number of results, 1-20"),
@@ -267,7 +267,7 @@ pub const SPECS: &[Spec] = &[
         name: "kb_search",
         path: &["kb", "search"],
         implemented: true,
-        desc: "Search the offline Taiwan knowledge base before any web search. Returns data.via and ranked hits (id, name_zh, category, official_url, verify_status, score, match, matched_terms, which). Extra words are optional: a hit can match only some terms, and generic words (官網, 網站, 怎麼) are low-weight. which lists kb_open --which values. If nothing matches, follow the hint (drop words, split terms, try the formal name, or drop --category). Web search is the last resort. Never invent a URL.",
+        desc: "Search the offline Taiwan knowledge base first, before wiki_search or web search. Returns data.via and ranked hits (id, name_zh, category, official_url, verify_status, score, match, matched_terms, which). Extra words are optional: a hit can match only some terms, and generic words (官網, 網站, 怎麼) are low-weight. which lists kb_open --which values. If nothing matches, follow the hint (drop words, split terms, try the formal name, or drop --category). For general knowledge, wiki_search is next. DuckDuckGo web search is the last resort. Never invent a URL.",
         params: &[
             pos("query", "Keywords, e.g. 報稅 or 身分證 補發. Chinese partial words work"),
             opt("category", Kind::Str, "Category slug: portal, household, nhi, tax, motor, labor, welfare, transport, medical, utilities, post, weather, consumer, finance, food, shopping, housing, education, entertainment, payment, general, media, social, search, tech"),
@@ -290,6 +290,27 @@ pub const SPECS: &[Spec] = &[
         params: &[
             pos("id", "Record id from kb_search"),
             dflt("which", Kind::Str, "official", "One of the which values on the kb_search hit or kb_get record: official, or a service_urls rel such as apply, form, page or email"),
+        ],
+    },
+    Spec {
+        name: "wiki_search",
+        path: &["wiki", "search"],
+        implemented: true,
+        desc: "Search Wikipedia after kb_search and before web search (DuckDuckGo). Default lang is zh, which requests the Taiwan variant (Traditional Chinese). Use lang=en for English. Returns titles, short snippets and canonical URLs. Then wiki_open the title and read the doc; do not answer from the snippet alone.",
+        params: &[
+            pos("query", "Words to search for, e.g. 台北101 or Albert Einstein"),
+            dflt("lang", Kind::Str, "zh", "Wikipedia language. zh requests variant zh-tw. en is English Wikipedia"),
+            dflt("limit", Kind::Int, "5", "Maximum hits (1-20)"),
+        ],
+    },
+    Spec {
+        name: "wiki_open",
+        path: &["wiki", "open"],
+        implemented: true,
+        desc: "Open one Wikipedia article by title or wikipedia.org URL and store the plain text as a doc handle. Returns doc, title, url and an outline — read it with read --section or read --grep. data.url is the canonical article URL for notes and source checks. zh uses variant zh-tw. Redirects are followed. Missing and disambiguation pages return an error and a next step, not a crash.",
+        params: &[
+            pos("title", "Article title, or a https://<lang>.wikipedia.org/wiki/… URL"),
+            dflt("lang", Kind::Str, "zh", "Language when title is not a URL. A Wikipedia URL uses the language in its host. zh requests the Taiwan variant"),
         ],
     },
     Spec {
